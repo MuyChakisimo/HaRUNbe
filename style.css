@@ -1,0 +1,60 @@
+﻿body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: black;
+    color: white;
+    font-family: sans-serif;
+    text-align: center;
+}
+
+#main-menu, #pause-menu, #score-screen {
+    position: absolute;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.hidden {
+    display: none;
+}
+
+#game-container {
+    background-color: skyblue;
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#sky {
+    font-size: 2em;
+    position: absolute;
+    top: 10px;
+    width: 100%;
+}
+
+#ground {
+    font-size: 2em;
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    text-align: center;
+}
+
+#gorilla {
+    position: absolute;
+    bottom: 50px;
+    left: 50px;
+    font-size: 2em;
+}
+
+#pause-btn {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+}
