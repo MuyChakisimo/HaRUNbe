@@ -1,37 +1,85 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, orientation=landscape">
-  <meta name="theme-color" content="#000000">
-  <title>HaRUNbe</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>HaRUNbe</title>
+
+    <!-- Favicon & PWA icons -->
+    <link rel="icon" type="image/x-icon" href="Assets/Icon/favicon.ico">
+    <link rel="icon" type="image/png" sizes="72x72" href="Assets/Icon/icon-72.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="Assets/Icon/icon-96.png">
+    <link rel="icon" type="image/png" sizes="128x128" href="Assets/Icon/icon-128.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="Assets/Icon/icon-192.png">
+    <link rel="icon" type="image/png" sizes="256x256" href="Assets/Icon/icon-256.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="Assets/Icon/icon-512.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="Assets/Icon/icon-192.png">
+
+    <!-- Manifest & theme -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#228B22">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="main-menu">
-    <h1>HaRUNbe</h1>
-    <button id="start-btn">Start</button>
-  </div>
 
-  <div id="game-container" class="hidden">
-    <button id="pause-btn">⏸️</button>
-    <div id="sky">☁️☁️☁️</div>
-    <div id="ground">🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱</div>
-    <div id="gorilla">🦍</div>
-  </div>
+<div id="app-container">
 
-  <div id="pause-menu" class="hidden">
-    <button id="continue-btn">Continue</button>
-    <button id="main-menu-btn">Main Menu</button>
-  </div>
+    <div id="main-menu-screen" class="screen active">
+        <h1>HaRUNbe</h1>
+        <button id="start-btn">Start</button>
+        <button id="highscore-btn">View High Score</button>
+        <div id="version-text">v0.1.1</div>
+    </div>
 
-  <div id="score-screen" class="hidden">
-    <h2>Top 5 Scores</h2>
-    <ol id="top-scores"></ol>
-    <button id="restart-btn">Restart</button>
-  </div>
+    <div id="game-container" class="screen">
+        <canvas id="gameCanvas"></canvas>
+        <div id="grass"></div>
 
-  <script src="main.js"></script>
+        <button id="pause-btn">&#10074;&#10074;</button>
+        <div id="pause-overlay" class="overlay">
+            <h2 id="overlay-text">PAUSED</h2>
+            <button id="resume-btn">Resume</button>
+            <button id="return-title-btn">Return to Title</button>
+        </div>
+    </div>
+
+    <div id="highscore-screen" class="screen">
+        <h2>High Scores</h2>
+        <ol id="score-list"></ol>
+        <button id="menu-btn-from-scores">Back</button>
+    </div>
+
+    <div id="enter-highscore-screen" class="screen">
+        <h2>NEW HIGH SCORE!</h2>
+        <p>Your score: <span id="final-score-input">0</span></p>
+        <input type="text" id="name-input" placeholder="Enter your name" maxlength="10">
+        <button id="submit-score-btn">Submit</button>
+    </div>
+
+    <div id="final-score-screen" class="screen">
+        <h2>Game Over</h2>
+        <p>Your score: <span id="final-score-display">0</span></p>
+        <button id="restart-btn">Restart</button>
+        <button id="menu-btn-from-gameover">Main Menu</button>
+    </div>
+
+</div>
+
+<div id="rotate-prompt">
+    <p>Please rotate your device to landscape mode!</p>
+</div>
+
+<!-- JS -->
+<script src="game.js"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js')
+            .then(reg => console.log('SW registered:', reg))
+            .catch(err => console.error('SW registration failed:', err));
+    }
+</script>
+
 </body>
 </html>

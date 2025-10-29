@@ -1,60 +1,210 @@
-﻿body, html {
+/* Basic reset */
+body, html {
     margin: 0;
     padding: 0;
+    width: 100%;
+    height: 100%;
     overflow: hidden;
-    background-color: black;
+    font-family: Arial, sans-serif;
+    background-color: #333;
     color: white;
-    font-family: sans-serif;
-    text-align: center;
 }
 
-#main-menu, #pause-menu, #score-screen {
+/* This container holds all our screens */
+#app-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Universal Screen & Menu Styling --- */
+.screen {
+    display: none;
+    width: 100%;
+    height: 100%;
     position: absolute;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
+    top: 0;
+    left: 0;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    gap: 15px; 
+    background-color: rgba(0, 0, 0, 0.3);
 }
 
-.hidden {
-    display: none;
+.screen.active {
+    display: flex;
 }
 
-#game-container {
-    background-color: skyblue;
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
+/* --- Main Menu Background --- */
+#main-menu-screen {
+    background-color: #228B22;
+    background-image: url('Assets/Scenery/TitleScreen.jpg');
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    justify-content: flex-end;  
+    padding-bottom: 10%;      
 }
 
-#sky {
-    font-size: 2em;
-    position: absolute;
-    top: 10px;
-    width: 100%;
+#main-menu-screen h1 {
+    display: none; 
 }
 
-#ground {
-    font-size: 2em;
-    position: absolute;
-    bottom: 0;
-    width: 100%;
+/* Menu headers */
+h2 {
+    font-size: 3rem;
+    margin: 0;
+    color: white;
+}
+
+/* Menu buttons */
+button {
+    font-size: 1.1rem;
+    padding: 8px 20px;
+    min-width: 190px;
+    background-color: #228B22;
+    color: white;
+    border: 3px solid #006400;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+button:hover {
+    background-color: #32CD32;
+}
+
+/* High score list */
+#score-list {
+    font-size: 1.5rem;
+    text-align: left;
+    max-width: 300px;
+}
+#score-list li {
+    margin-bottom: 10px;
+}
+
+/* Name input field */
+#name-input {
+    font-size: 1.5rem;
+    padding: 10px;
+    width: 250px;
     text-align: center;
 }
 
-#gorilla {
+/* Version text on main menu */
+#version-text {
     position: absolute;
-    bottom: 50px;
-    left: 50px;
-    font-size: 2em;
+    bottom: 10px;
+    right: 15px;
+    font-size: 1rem;
+    color: #eee;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
+/* --- Game Screen Styling --- */
+#game-container {
+    position: relative;
+    display: none;
+    background-color: transparent;
+}
+#game-container.active {
+    display: block;
+}
+
+#gameCanvas {
+    background-color: transparent;
+    display: block;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1; 
+}
+
+#grass {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 20%;
+    background-color: #228B22;
+    border-top: 5px solid #006400;
+    box-sizing: border-box;
+    cursor: pointer;
+    z-index: 10; 
+}
+
+/* Pause button */
 #pause-btn {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
+    top: 15px;
+    left: 15px;
+    z-index: 20; /* On top of grass and canvas */
+    font-size: 1.2rem; 
+    font-weight: bold;
+    padding: 5px 15px;
+    min-width: 0; 
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+    display: none; 
+}
+
+#game-container.active #pause-btn {
+    display: block;
+}
+
+/* --- Pause Overlay --- */
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 30; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 3rem; 
+    text-align: center;
+    display: none; 
+}
+
+.overlay h2 {
+    font-size: 4rem; 
+    margin-bottom: 20px;
+}
+
+#pause-overlay button {
+    font-size: 1.5rem;
+    padding: 10px 25px;
+    margin: 8px;
+    min-width: 180px;
+}
+
+/* --- Orientation Prompt --- */
+#rotate-prompt {
+    display: none;
+    width: 100%;
+    height: 100%;
+    color: white;
+    background-color: #222;
+    text-align: center;
+    padding-top: 50px;
+    box-sizing: border-box;
+}
+
+/* --- Media Queries --- */
+@media (orientation: landscape) {
+    #rotate-prompt { display: none; }
+    #app-container { display: block; }
+}
+
+@media (orientation: portrait) {
+    #rotate-prompt { display: block; }
+    #app-container { display: none; }
 }
