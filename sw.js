@@ -1,21 +1,29 @@
-const CACHE_NAME = 'harunbe-cache-v2.0';
+const CACHE_NAME = 'harunbe-cache-v2.1';
 const ASSETS_TO_CACHE = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/game.js',
-    '/manifest.json',
-    '/Assets/Player/128x128DefaultGorilla.png',
-    '/Assets/Scenery/ClearSky.png',
-    '/Assets/Scenery/StarryNight.png',
-    '/Assets/Scenery/128x128DayCloud.png',
-    '/Assets/Scenery/128x128NightCloud.png',
-    '/Assets/Scenery/128x128Sun.png',
-    '/Assets/Scenery/128x128Moon.png',
-    '/Assets/Items/128x128Banana.png',
-    '/Assets/Enemies/128x128Tiger.png',
-    '/Assets/Enemies/128x128Hawk.png',
-    '/Assets/Scenery/TitleScreen.jpg'
+    '/', // Root directory access
+    'index.html',
+    'style.css',
+    'game.js',
+    'manifest.json',
+    'Assets/Player/128x128DefaultGorilla.png',
+    'Assets/Scenery/ClearSky.png',
+    'Assets/Scenery/StarryNight.png',
+    'Assets/Scenery/128x128DayCloud.png',
+    'Assets/Scenery/128x128NightCloud.png',
+    'Assets/Scenery/128x128Sun.png',
+    'Assets/Scenery/128x128Moon.png',
+    'Assets/Items/128x128Banana.png',
+    'Assets/Enemies/128x128Tiger.png',
+    'Assets/Enemies/128x128Hawk.png',
+    'Assets/Scenery/TitleScreen.jpg',
+    // --- Also add Icon paths ---
+    'Assets/Icon/favicon.ico',
+    'Assets/Icon/icon-72.png',
+    'Assets/Icon/icon-96.png',
+    'Assets/Icon/icon-128.png',
+    'Assets/Icon/icon-192.png',
+    'Assets/Icon/icon-256.png',
+    'Assets/Icon/icon-512.png'
 ];
 
 // Install event - cache assets
@@ -68,4 +76,3 @@ self.addEventListener('fetch', event => {
         })
     );
 });
-
