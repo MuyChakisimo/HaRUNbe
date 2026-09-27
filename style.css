@@ -1,210 +1,480 @@
-/* Basic reset */
-body, html {
+/* =========================================================================
+   HaRUNbe
+   ========================================================================= */
+
+:root {
+    --jungle: #228b22;
+    --jungle-dark: #006400;
+    --jungle-light: #32cd32;
+    --lime: #c1ff72;           /* title-screen backdrop */
+    --banana: #ffe135;
+    --panel: rgba(18, 38, 20, 0.88);
+    --text: #ffffff;
+    --muted: #cfe8cf;
+    --danger: #d61f1f;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --font: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
     margin: 0;
     padding: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: Arial, sans-serif;
-    background-color: #333;
-    color: white;
+    background: #1b2a1b;
+    color: var(--text);
+    font-family: var(--font);
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* This container holds all our screens */
-#app-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
+body {
+    position: fixed;
+    inset: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
-/* --- Universal Screen & Menu Styling --- */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.hidden { display: none !important; }
+
+#app {
+    position: absolute;
+    inset: 0;
+}
+
+/* --- Screens ------------------------------------------------------------ */
+
 .screen {
     display: none;
-    width: 100%;
-    height: 100%;
     position: absolute;
-    top: 0;
-    left: 0;
+    inset: 0;
+}
+
+.screen.active { display: flex; }
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+    font: bold 1.15rem var(--font);
+    padding: 0.55em 1.4em;
+    min-width: 11rem;
+    min-height: 2.9rem;
+    color: var(--text);
+    background: var(--jungle);
+    border: 3px solid var(--jungle-dark);
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.btn:hover:not(:disabled) { background: var(--jungle-light); }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.btn:focus-visible { outline: 3px solid var(--banana); outline-offset: 2px; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+
+.btn-primary {
+    background: #2fa32f;
+}
+
+.btn-small {
+    min-width: 0;
+    min-height: 2.4rem;
+    font-size: 1rem;
+    padding: 0.4em 1em;
+}
+
+/* --- Main menu ---------------------------------------------------------- */
+
+#menu-screen {
     flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    background: var(--lime) url('Assets/Scenery/TitleScreen.jpg') center top / contain no-repeat;
+    padding: var(--safe-top) var(--safe-right) calc(4vh + var(--safe-bottom)) var(--safe-left);
+}
+
+.menu-panel {
+    display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 15px; 
-    background-color: rgba(0, 0, 0, 0.3);
+    gap: 12px 16px;
+    max-width: 38rem;
 }
 
-.screen.active {
-    display: flex;
-}
-
-/* --- Main Menu Background --- */
-#main-menu-screen {
-    background-color: #228B22;
-    background-image: url('Assets/Scenery/TitleScreen.jpg');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    justify-content: flex-end;  
-    padding-bottom: 10%;      
-}
-
-#main-menu-screen h1 {
-    display: none; 
-}
-
-/* Menu headers */
-h2 {
-    font-size: 3rem;
+.menu-best {
+    flex-basis: 100%;
     margin: 0;
-    color: white;
+    text-align: center;
+    font-weight: bold;
+    color: #3b2308;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.menu-best:empty { display: none; }
+
+.portrait-hint {
+    display: none;
+    flex-basis: 100%;
+    margin: 0;
+    text-align: center;
+    color: #3b2308;
 }
 
-/* Menu buttons */
-button {
-    font-size: 1.1rem;
-    padding: 8px 20px;
-    min-width: 190px;
-    background-color: #228B22;
-    color: white;
-    border: 3px solid #006400;
-    border-radius: 10px;
-    cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+.version-text {
+    position: absolute;
+    right: calc(14px + var(--safe-right));
+    bottom: calc(8px + var(--safe-bottom));
+    font-size: 0.9rem;
+    color: #3b2308;
+    opacity: 0.8;
 }
 
-button:hover {
-    background-color: #32CD32;
+.update-banner {
+    position: absolute;
+    top: calc(10px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-radius: 12px;
+    white-space: nowrap;
 }
 
-/* High score list */
-#score-list {
-    font-size: 1.5rem;
-    text-align: left;
-    max-width: 300px;
-}
-#score-list li {
-    margin-bottom: 10px;
-}
+/* --- Panels / overlays -------------------------------------------------- */
 
-/* Name input field */
-#name-input {
-    font-size: 1.5rem;
-    padding: 10px;
-    width: 250px;
+.panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 28px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    background: var(--panel);
+    border: 3px solid var(--jungle-dark);
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     text-align: center;
 }
 
-/* Version text on main menu */
-#version-text {
-    position: absolute;
-    bottom: 10px;
-    right: 15px;
-    font-size: 1rem;
-    color: #eee;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+h2 {
+    margin: 0;
+    font-size: 2.4rem;
+    letter-spacing: 1px;
 }
 
-/* --- Game Screen Styling --- */
-#game-container {
-    position: relative;
-    display: none;
-    background-color: transparent;
-}
-#game-container.active {
-    display: block;
+h3 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    color: var(--muted);
 }
 
-#gameCanvas {
-    background-color: transparent;
-    display: block;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1; 
-}
-
-#grass {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 20%;
-    background-color: #228B22;
-    border-top: 5px solid #006400;
-    box-sizing: border-box;
-    cursor: pointer;
-    z-index: 10; 
-}
-
-/* Pause button */
-#pause-btn {
-    position: absolute;
-    top: 15px;
-    left: 15px;
-    z-index: 20; /* On top of grass and canvas */
-    font-size: 1.2rem; 
-    font-weight: bold;
-    padding: 5px 15px;
-    min-width: 0; 
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-    display: none; 
-}
-
-#game-container.active #pause-btn {
-    display: block;
-}
-
-/* --- Pause Overlay --- */
 .overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 30; 
+    inset: 0;
+    z-index: 30;
     display: flex;
     justify-content: center;
     align-items: center;
-    flex-direction: column;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    font-size: 3rem; 
-    text-align: center;
-    display: none; 
+    background: rgba(0, 0, 0, 0.45);
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
-.overlay h2 {
-    font-size: 4rem; 
-    margin-bottom: 20px;
+.hint {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    color: var(--muted);
 }
 
-#pause-overlay button {
-    font-size: 1.5rem;
-    padding: 10px 25px;
-    margin: 8px;
-    min-width: 180px;
+/* --- Game screen -------------------------------------------------------- */
+
+#game-screen {
+    background: #000;
+    touch-action: none;
 }
 
-/* --- Orientation Prompt --- */
-#rotate-prompt {
-    display: none;
+#game-canvas {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    color: white;
-    background-color: #222;
-    text-align: center;
-    padding-top: 50px;
-    box-sizing: border-box;
+    display: block;
+    touch-action: none;
+    cursor: pointer;
 }
 
-/* --- Media Queries --- */
-@media (orientation: landscape) {
-    #rotate-prompt { display: none; }
-    #app-container { display: block; }
+.hud {
+    position: absolute;
+    z-index: 20;
+    top: calc(12px + var(--safe-top));
+    right: calc(14px + var(--safe-right));
+    display: flex;
+    gap: 10px;
+    pointer-events: none;
 }
+
+.hud-pill {
+    min-width: 4.5rem;
+    padding: 6px 14px;
+    font: bold 1.35rem var(--font);
+    text-align: center;
+    color: var(--banana);
+    background: rgba(0, 0, 0, 0.42);
+    border-radius: 999px;
+    text-shadow: 0 2px 2px rgba(0, 0, 0, 0.6);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.hud-pill + .hud-pill { color: var(--text); }
+
+.pause-btn {
+    position: absolute;
+    z-index: 20;
+    top: calc(12px + var(--safe-top));
+    left: calc(14px + var(--safe-left));
+    min-width: 0;
+    min-height: 0;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    font-size: 1.1rem;
+}
+
+.countdown {
+    background: rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+#countdown-text {
+    font: bold 8rem Impact, "Arial Black", var(--font);
+    color: var(--banana);
+    text-shadow: 0 6px 0 #6b4a00, 0 10px 20px rgba(0, 0, 0, 0.6);
+}
+
+/* --- Results ------------------------------------------------------------ */
+
+.results-panel { min-width: min(28rem, calc(100vw - 24px)); }
+
+.results-grid {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.result, .record-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 9.5rem;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+.record-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+}
+
+.record-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--banana);
+    font-variant-numeric: tabular-nums;
+}
+
+.badge {
+    margin-top: 2px;
+    padding: 2px 10px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #3b2308;
+    background: var(--banana);
+    border-radius: 999px;
+    animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+
+.bests {
+    margin: 0;
+    color: var(--muted);
+}
+.bests strong { color: var(--text); }
+
+.entry p { margin: 0 0 6px; }
+
+.entry-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+#name-input {
+    width: 12rem;
+    padding: 8px 10px;
+    font: 1.1rem var(--font);
+    text-align: center;
+    border: 2px solid var(--jungle-dark);
+    border-radius: 10px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.button-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* --- Records screen ----------------------------------------------------- */
+
+#records-screen {
+    justify-content: center;
+    align-items: center;
+    background: var(--lime) url('Assets/Scenery/TitleScreen.jpg') center / cover no-repeat;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.records-panel { width: min(40rem, calc(100vw - 24px)); }
+
+.record-cards, .boards {
+    display: flex;
+    gap: 14px;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.board {
+    flex: 1 1 14rem;
+    text-align: left;
+}
+
+.board ol {
+    margin: 0;
+    padding-left: 1.6em;
+}
+
+.board li {
+    padding: 3px 0;
+}
+
+.board li .name { display: inline-block; min-width: 7rem; }
+.board li .value { float: right; font-weight: bold; color: var(--banana); }
+.board li.empty { list-style: none; margin-left: -1.6em; color: var(--muted); }
+
+/* --- Rotate prompt ------------------------------------------------------ */
+
+.rotate-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    padding: 24px;
+    text-align: center;
+    background: radial-gradient(circle at 50% 35%, #2e7d32, #10301a 70%);
+}
+
+.rotate-phone {
+    width: 64px;
+    height: 110px;
+    border: 5px solid var(--text);
+    border-radius: 14px;
+    position: relative;
+    animation: rotate-hint 2.2s ease-in-out infinite;
+}
+
+.rotate-phone::after {
+    content: "";
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    width: 14px;
+    height: 4px;
+    margin-left: -7px;
+    border-radius: 2px;
+    background: var(--text);
+}
+
+@keyframes rotate-hint {
+    0%, 20% { transform: rotate(0deg); }
+    55%, 80% { transform: rotate(-90deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.rotate-title {
+    margin: 10px 0 0;
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.rotate-text {
+    margin: 0;
+    max-width: 22rem;
+    color: var(--muted);
+}
+
+/* --- Portrait fallback -------------------------------------------------- */
 
 @media (orientation: portrait) {
-    #rotate-prompt { display: block; }
-    #app-container { display: none; }
+    #menu-screen {
+        justify-content: center;
+        background-position: center 18%;
+        padding-top: calc(56vw + var(--safe-top));
+    }
+    .menu-panel { flex-direction: column; flex-wrap: nowrap; }
+    .menu-panel .btn { min-width: 14rem; }
+    .portrait-hint { display: block; }
+    h2 { font-size: 2rem; }
+}
+
+/* --- Short landscape screens (phones) ----------------------------------- */
+
+@media (max-height: 430px) {
+    .btn { font-size: 1rem; min-height: 2.5rem; }
+    .btn-primary { font-size: 1.1rem; }
+    h2 { font-size: 1.8rem; }
+    .panel { padding: 12px 20px; gap: 8px; }
+    .record-value { font-size: 1.5rem; }
+    .result, .record-card { padding: 6px 12px; }
+    .hud-pill { font-size: 1.1rem; padding: 4px 12px; }
+    #countdown-text { font-size: 6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .badge, .rotate-phone { animation: none; }
 }

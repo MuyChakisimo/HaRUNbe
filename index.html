@@ -2,84 +2,133 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>HaRUNbe</title>
+    <meta name="description" content="Run, jump, collect bananas and dodge tigers and hawks in this endless jungle runner.">
 
-    <!-- Favicon & PWA icons -->
     <link rel="icon" type="image/x-icon" href="Assets/Icon/favicon.ico">
-    <link rel="icon" type="image/png" sizes="72x72" href="Assets/Icon/icon-72.png">
-    <link rel="icon" type="image/png" sizes="96x96" href="Assets/Icon/icon-96.png">
-    <link rel="icon" type="image/png" sizes="128x128" href="Assets/Icon/icon-128.png">
     <link rel="icon" type="image/png" sizes="192x192" href="Assets/Icon/icon-192.png">
-    <link rel="icon" type="image/png" sizes="256x256" href="Assets/Icon/icon-256.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="Assets/Icon/icon-512.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="Assets/Icon/icon-192.png">
+    <link rel="apple-touch-icon" href="Assets/Icon/icon-192.png">
 
-    <!-- Manifest & theme -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#228B22">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HaRUNbe">
 
-    <!-- CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="app-container">
+<main id="app">
 
-    <div id="main-menu-screen" class="screen active">
-        <h1>HaRUNbe</h1>
-        <button id="start-btn">Start</button>
-        <button id="highscore-btn">View High Score</button>
-        <div id="version-text">v2.1</div>
-    </div>
-
-    <div id="game-container" class="screen">
-        <canvas id="gameCanvas"></canvas>
-        <div id="grass"></div>
-
-        <button id="pause-btn">&#10074;&#10074;</button>
-        <div id="pause-overlay" class="overlay">
-            <h2 id="overlay-text">PAUSED</h2>
-            <button id="resume-btn">Resume</button>
-            <button id="return-title-btn">Return to Title</button>
+    <!-- Main menu -->
+    <section id="menu-screen" class="screen active" aria-label="Main menu">
+        <h1 class="visually-hidden">HaRUNbe</h1>
+        <div class="menu-panel">
+            <button id="start-btn" class="btn btn-primary" disabled>Loading…</button>
+            <button id="records-btn" class="btn">Records</button>
+            <p id="menu-best" class="menu-best"></p>
+            <p class="portrait-hint">Best played in landscape</p>
         </div>
-    </div>
+        <div id="update-banner" class="update-banner hidden">
+            A new version is ready. <button id="update-btn" class="btn btn-small">Reload</button>
+        </div>
+        <div id="version-text" class="version-text"></div>
+    </section>
 
-    <div id="highscore-screen" class="screen">
-        <h2>High Scores</h2>
-        <ol id="score-list"></ol>
-        <button id="menu-btn-from-scores">Back</button>
-    </div>
+    <!-- Records -->
+    <section id="records-screen" class="screen" aria-label="Records">
+        <div class="panel records-panel">
+            <h2>Records</h2>
+            <div class="record-cards">
+                <div class="record-card">
+                    <span class="record-label">Best distance</span>
+                    <span id="rec-best-distance" class="record-value">0 m</span>
+                </div>
+                <div class="record-card">
+                    <span class="record-label">Most bananas</span>
+                    <span id="rec-most-bananas" class="record-value">0</span>
+                </div>
+            </div>
+            <div class="boards">
+                <div class="board">
+                    <h3>Top 5 distances</h3>
+                    <ol id="rec-distance-list"></ol>
+                </div>
+                <div class="board">
+                    <h3>Top 5 banana hauls</h3>
+                    <ol id="rec-banana-list"></ol>
+                </div>
+            </div>
+            <button id="records-back-btn" class="btn">Back</button>
+        </div>
+    </section>
 
-    <div id="enter-highscore-screen" class="screen">
-        <h2>NEW HIGH SCORE!</h2>
-        <p>Your score: <span id="final-score-input">0</span></p>
-        <input type="text" id="name-input" placeholder="Enter your name" maxlength="10">
-        <button id="submit-score-btn">Submit</button>
-    </div>
+    <!-- Game -->
+    <section id="game-screen" class="screen" aria-label="Game">
+        <canvas id="game-canvas"></canvas>
 
-    <div id="final-score-screen" class="screen">
-        <h2>Game Over</h2>
-        <p>Your score: <span id="final-score-display">0</span></p>
-        <button id="restart-btn">Restart</button>
-        <button id="menu-btn-from-gameover">Main Menu</button>
-    </div>
+        <div id="hud" class="hud" aria-live="off">
+            <div class="hud-pill"><span aria-hidden="true">🍌</span> <span id="hud-bananas">0</span></div>
+            <div class="hud-pill"><span id="hud-distance">0 m</span></div>
+        </div>
+        <button id="pause-btn" class="btn pause-btn" aria-label="Pause">&#10074;&#10074;</button>
 
+        <div id="pause-overlay" class="overlay hidden">
+            <div class="panel">
+                <h2>Paused</h2>
+                <button id="resume-btn" class="btn btn-primary">Resume</button>
+                <button id="pause-menu-btn" class="btn">Main Menu</button>
+                <p class="hint">Space / tap = jump (hold for higher) · P or Esc = pause</p>
+            </div>
+        </div>
+
+        <div id="countdown" class="overlay countdown hidden"><span id="countdown-text">3</span></div>
+
+        <div id="results-overlay" class="overlay hidden">
+            <div class="panel results-panel">
+                <h2>Run Over</h2>
+                <div class="results-grid">
+                    <div class="result">
+                        <span class="record-label">Distance</span>
+                        <span id="res-distance" class="record-value">0 m</span>
+                        <span id="res-distance-badge" class="badge hidden">NEW RECORD!</span>
+                    </div>
+                    <div class="result">
+                        <span class="record-label">Bananas</span>
+                        <span id="res-bananas" class="record-value">0</span>
+                        <span id="res-bananas-badge" class="badge hidden">NEW RECORD!</span>
+                    </div>
+                </div>
+                <p class="bests">Best distance <strong id="res-best-distance">0 m</strong> · Most bananas <strong id="res-most-bananas">0</strong></p>
+                <div id="leaderboard-entry" class="entry hidden">
+                    <p id="entry-text"></p>
+                    <div class="entry-row">
+                        <input type="text" id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" enterkeyhint="done">
+                        <button id="save-name-btn" class="btn btn-small">Save</button>
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button id="restart-btn" class="btn btn-primary">Restart</button>
+                    <button id="results-menu-btn" class="btn">Main Menu</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- Rotate prompt (phones/tablets in portrait during a run) -->
+<div id="rotate-overlay" class="rotate-overlay hidden" role="dialog" aria-label="Rotate your device">
+    <div class="rotate-phone" aria-hidden="true"></div>
+    <p class="rotate-title">Rotate your device</p>
+    <p class="rotate-text">HaRUNbe is made for landscape. Turn your phone sideways to keep running.</p>
+    <button id="rotate-anyway-btn" class="btn btn-small">Play in portrait anyway</button>
 </div>
 
-<div id="rotate-prompt">
-    <p>Please rotate your device to landscape mode!</p>
-</div>
-
-<!-- JS -->
+<script src="engine.js"></script>
 <script src="game.js"></script>
-<script>
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('SW registered:', reg))
-            .catch(err => console.error('SW registration failed:', err));
-    }
-</script>
-
 </body>
 </html>

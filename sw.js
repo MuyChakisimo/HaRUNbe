@@ -1,78 +1,110 @@
-const CACHE_NAME = 'harunbe-cache-v2.1';
-const ASSETS_TO_CACHE = [
-    '/', // Root directory access
-    'index.html',
-    'style.css',
-    'game.js',
-    'manifest.json',
-    'Assets/Player/128x128DefaultGorilla.png',
-    'Assets/Scenery/ClearSky.png',
-    'Assets/Scenery/StarryNight.png',
-    'Assets/Scenery/128x128DayCloud.png',
-    'Assets/Scenery/128x128NightCloud.png',
-    'Assets/Scenery/128x128Sun.png',
-    'Assets/Scenery/128x128Moon.png',
-    'Assets/Items/128x128Banana.png',
-    'Assets/Enemies/128x128Tiger.png',
-    'Assets/Enemies/128x128Hawk.png',
-    'Assets/Scenery/TitleScreen.jpg',
-    // --- Also add Icon paths ---
-    'Assets/Icon/favicon.ico',
-    'Assets/Icon/icon-72.png',
-    'Assets/Icon/icon-96.png',
-    'Assets/Icon/icon-128.png',
-    'Assets/Icon/icon-192.png',
-    'Assets/Icon/icon-256.png',
-    'Assets/Icon/icon-512.png'
+/*
+ * HaRUNbe service worker.
+ *
+ * - Everything the game needs is precached on install, so it runs fully offline.
+ * - Code and pages (HTML/JS/CSS/manifest) are network-first with a short timeout, so a
+ *   deployed update is picked up on the next launch instead of being stuck behind the cache.
+ * - Images are cache-first (they rarely change and are the bulk of the download).
+ * - Bump VERSION whenever any file changes; old caches are deleted on activation.
+ */
+const VERSION = '3.0.0';
+const CACHE = 'harunbe-' + VERSION;
+
+const CORE = [
+    './',
+    './index.html',
+    './style.css',
+    './engine.js',
+    './game.js',
+    './manifest.json'
 ];
 
-// Install event - cache assets
-self.addEventListener('install', event => {
-    console.log('[SW] Installing...');
+const ASSETS = [
+    './Assets/Player/256x256DefaultGorilla.png',
+    './Assets/Enemies/256x256Tiger.png',
+    './Assets/Enemies/256x256Hawk.png',
+    './Assets/Items/256x256Banana.png',
+    './Assets/Scenery/256x256Sun.png',
+    './Assets/Scenery/256x256Moon.png',
+    './Assets/Scenery/256x256DayCloud.png',
+    './Assets/Scenery/256x256NightCloud.png',
+    './Assets/Scenery/ClearSky.jpg',
+    './Assets/Scenery/StarryNight.jpg',
+    './Assets/Scenery/TitleScreen.jpg',
+    './Assets/Icon/favicon.ico',
+    './Assets/Icon/icon-72.png',
+    './Assets/Icon/icon-96.png',
+    './Assets/Icon/icon-128.png',
+    './Assets/Icon/icon-192.png',
+    './Assets/Icon/icon-256.png',
+    './Assets/Icon/icon-512.png'
+];
+
+const NETWORK_TIMEOUT_MS = 3500;
+
+self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(ASSETS_TO_CACHE))
+        caches.open(CACHE)
+            // cache: 'reload' bypasses the HTTP cache so a new version never precaches stale files.
+            .then((cache) => cache.addAll(CORE.concat(ASSETS).map((url) => new Request(url, { cache: 'reload' }))))
             .then(() => self.skipWaiting())
     );
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', event => {
-    console.log('[SW] Activating...');
+self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(
-                keys.map(key => {
-                    if (key !== CACHE_NAME) {
-                        console.log('[SW] Removing old cache:', key);
-                        return caches.delete(key);
-                    }
-                })
-            )
-        )
+        caches.keys()
+            .then((keys) => Promise.all(keys
+                .filter((key) => key.startsWith('harunbe-') && key !== CACHE)
+                .map((key) => caches.delete(key))))
+            .then(() => self.clients.claim())
     );
-    self.clients.claim();
 });
 
-// Fetch event - respond with cache, fallback to network
-self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.match(event.request).then(cachedResponse => {
-            if (cachedResponse) return cachedResponse;
-            return fetch(event.request)
-                .then(response => {
-                    // Optionally cache new requests
-                    return caches.open(CACHE_NAME).then(cache => {
-                        cache.put(event.request, response.clone());
-                        return response;
-                    });
-                })
-                .catch(() => {
-                    // Fallback if offline and resource not cached
-                    if (event.request.destination === 'document') {
-                        return caches.match('/index.html');
-                    }
-                });
-        })
-    );
+function isCode(request, url) {
+    return request.mode === 'navigate' || /\.(?:html|js|css|json)$/.test(url.pathname) || url.pathname.endsWith('/');
+}
+
+async function networkFirst(request) {
+    const cache = await caches.open(CACHE);
+    try {
+        const response = await fetchWithTimeout(request, NETWORK_TIMEOUT_MS);
+        if (response && response.ok) cache.put(request, response.clone());
+        return response;
+    } catch (err) {
+        const cached = await cache.match(request, { ignoreSearch: true });
+        if (cached) return cached;
+        if (request.mode === 'navigate') {
+            const shell = await cache.match('./index.html');
+            if (shell) return shell;
+        }
+        throw err;
+    }
+}
+
+async function cacheFirst(request) {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response && response.ok) cache.put(request, response.clone());
+    return response;
+}
+
+function fetchWithTimeout(request, ms) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), ms);
+        fetch(request).then(
+            (response) => { clearTimeout(timer); resolve(response); },
+            (err) => { clearTimeout(timer); reject(err); }
+        );
+    });
+}
+
+self.addEventListener('fetch', (event) => {
+    const request = event.request;
+    if (request.method !== 'GET') return;
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return;
+    event.respondWith(isCode(request, url) ? networkFirst(request) : cacheFirst(request));
 });

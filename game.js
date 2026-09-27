@@ -1,610 +1,1134 @@
-// Wait for the DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', () => {
+/*
+ * HaRUNbe — browser front end: assets, input, game loop, rendering, UI, records, PWA.
+ * Game rules and physics live in engine.js.
+ */
+(function () {
+    'use strict';
 
-    // --- 1. GET ALL HTML ELEMENTS ---
-    const screens = {
-        mainMenu: document.getElementById('main-menu-screen'),
-        game: document.getElementById('game-container'),
-        highScore: document.getElementById('highscore-screen'),
-        enterScore: document.getElementById('enter-highscore-screen'),
-        finalScore: document.getElementById('final-score-screen')
+    const E = window.HarunbeEngine;
+    const { CONFIG, SPRITES, clamp, lerp } = E;
+    const GROUND_Y = CONFIG.GROUND_Y;
+
+    // =====================================================================
+    // DOM
+    // =====================================================================
+
+    const $ = (id) => document.getElementById(id);
+    const dom = {
+        screens: { menu: $('menu-screen'), records: $('records-screen'), game: $('game-screen') },
+        canvas: $('game-canvas'),
+        startBtn: $('start-btn'),
+        recordsBtn: $('records-btn'),
+        recordsBackBtn: $('records-back-btn'),
+        menuBest: $('menu-best'),
+        version: $('version-text'),
+        updateBanner: $('update-banner'),
+        updateBtn: $('update-btn'),
+        hudBananas: $('hud-bananas'),
+        hudDistance: $('hud-distance'),
+        pauseBtn: $('pause-btn'),
+        pauseOverlay: $('pause-overlay'),
+        resumeBtn: $('resume-btn'),
+        pauseMenuBtn: $('pause-menu-btn'),
+        countdown: $('countdown'),
+        countdownText: $('countdown-text'),
+        results: $('results-overlay'),
+        resDistance: $('res-distance'),
+        resBananas: $('res-bananas'),
+        resBestDistance: $('res-best-distance'),
+        resMostBananas: $('res-most-bananas'),
+        resDistanceBadge: $('res-distance-badge'),
+        resBananasBadge: $('res-bananas-badge'),
+        entry: $('leaderboard-entry'),
+        entryText: $('entry-text'),
+        nameInput: $('name-input'),
+        saveNameBtn: $('save-name-btn'),
+        restartBtn: $('restart-btn'),
+        resultsMenuBtn: $('results-menu-btn'),
+        recBestDistance: $('rec-best-distance'),
+        recMostBananas: $('rec-most-bananas'),
+        recDistanceList: $('rec-distance-list'),
+        recBananaList: $('rec-banana-list'),
+        rotate: $('rotate-overlay'),
+        rotateAnywayBtn: $('rotate-anyway-btn')
     };
-    const buttons = {
-        start: document.getElementById('start-btn'),
-        viewScores: document.getElementById('highscore-btn'),
-        menuFromScores: document.getElementById('menu-btn-from-scores'),
-        submitScore: document.getElementById('submit-score-btn'),
-        restart: document.getElementById('restart-btn'),
-        menuFromGameOver: document.getElementById('menu-btn-from-gameover'),
-        pause: document.getElementById('pause-btn'),
-        resume: document.getElementById('resume-btn'),
-        returnTitle: document.getElementById('return-title-btn')
+    const ctx = dom.canvas.getContext('2d', { alpha: false });
+
+    // =====================================================================
+    // Assets
+    // =====================================================================
+
+    const ASSET_PATHS = {
+        gorilla: 'Assets/Player/256x256DefaultGorilla.png',
+        tiger: 'Assets/Enemies/256x256Tiger.png',
+        hawk: 'Assets/Enemies/256x256Hawk.png',
+        banana: 'Assets/Items/256x256Banana.png',
+        sun: 'Assets/Scenery/256x256Sun.png',
+        moon: 'Assets/Scenery/256x256Moon.png',
+        cloudDay: 'Assets/Scenery/256x256DayCloud.png',
+        cloudNight: 'Assets/Scenery/256x256NightCloud.png',
+        skyDay: 'Assets/Scenery/ClearSky.jpg',
+        skyNight: 'Assets/Scenery/StarryNight.jpg'
     };
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const grass = document.getElementById('grass');
-    const pauseOverlay = document.getElementById('pause-overlay');
-    const overlayText = document.getElementById('overlay-text');
-    const scoreList = document.getElementById('score-list');
-    const finalScoreInputDisplay = document.getElementById('final-score-input');
-    const finalScoreDisplay = document.getElementById('final-score-display');
-    const nameInput = document.getElementById('name-input');
+    const img = {};
+    let assetsReady = false;
 
-    // --- 2. ASSET LOADER ---
-    let assets = {};
-    const assetList = [
-        { name: "playerImage",   src: "Assets/Player/128x128DefaultGorilla.png" },
-        { name: "bgClearSky",    src: "Assets/Scenery/ClearSky.png" },
-        { name: "bgStarryNight", src: "Assets/Scenery/StarryNight.png" },
-        { name: "cloudDay",      src: "Assets/Scenery/128x128DayCloud.png" },
-        { name: "cloudNight",    src: "Assets/Scenery/128x128NightCloud.png" },
-        { name: "sun",           src: "Assets/Scenery/128x128Sun.png" },
-        { name: "moon",          src: "Assets/Scenery/128x128Moon.png" },
-        { name: "banana",        src: "Assets/Items/128x128Banana.png" },
-        { name: "tiger",         src: "Assets/Enemies/128x128Tiger.png" },
-        { name: "hawk",          src: "Assets/Enemies/128x128Hawk.png" }
-    ];
-    let assetsLoaded = 0;
-
-    function loadAllAssets(callback) {
-        console.log("Loading assets...");
-        assetList.forEach(asset => {
-            const img = new Image();
-            img.src = asset.src;
-            img.onload = () => {
-                console.log(`Loaded: ${asset.name}`);
-                assets[asset.name] = img;
-                assetsLoaded++;
-                if (assetsLoaded === assetList.length) {
-                    console.log("All assets loaded.");
-                    callback();
-                }
-            };
-            img.onerror = () => console.error("Error loading asset: " + asset.src);
-        });
+    // A missing image never blocks the game; it is drawn with a simple fallback shape.
+    function loadAssets() {
+        return Promise.all(Object.keys(ASSET_PATHS).map((key) => new Promise((resolve) => {
+            const im = new Image();
+            im.decoding = 'async';
+            im.onload = () => { img[key] = im; resolve(); };
+            im.onerror = () => { img[key] = null; resolve(); };
+            im.src = ASSET_PATHS[key];
+        })));
     }
 
-    // --- 3. GAME STATE & VARIABLES ---
-    let gameState = 'MENU';
-    let animationFrameId = null;
-    let countdownIntervalId = null;
-    let highScores = [];
+    // =====================================================================
+    // Records (localStorage)
+    // =====================================================================
 
-    const gravity = 0.3;
-    const jumpPower = -15;
-    let grassHeight = 0, groundLevel = 0;
-    let isJumping = false;
+    const Records = (function () {
+        const KEY = 'harunbe.records.v2';
+        const LEGACY_KEY = 'haRUNbeHighScores'; // v2.x: [{name, score}] where score = bananas
+        const BOARD_SIZE = 5;
+        let data = blank();
 
-    const SUN_MOON_SPEED = 0.02, CLOUD_SPEED = 0.05, ITEM_SPEED = 0.8, ENEMY_SPEED = 3; // Faster
-    let speedMultiplier = 1.0;
-
-    let player = {}, scenery = {}, items = [], enemies = [];
-    let timeToNextBanana = 0, timeToNextEnemy = 0, score = 0;
-    let currentCycleState = 'DAY', nightOpacity = 0, dayOpacity = 1;
-
-    // --- 4. CORE FUNCTIONS ---
-    function resizeCanvas() {
-        console.log("Resizing canvas..."); // Log start
-        const clientWidth = canvas.clientWidth;
-        const clientHeight = canvas.clientHeight;
-
-        // Check for valid dimensions
-        if (clientWidth <= 0 || clientHeight <= 0) {
-            console.warn("Canvas dimensions are zero or negative. Skipping resize logic.");
-            return; // Exit if dimensions are invalid
+        function blank() {
+            return { version: 2, bestDistance: 0, mostBananas: 0, distanceBoard: [], bananaBoard: [], lastName: '' };
         }
 
-        canvas.width = clientWidth;
-        canvas.height = clientHeight;
-        grassHeight = canvas.height * 0.20;
-        groundLevel = canvas.height - grassHeight;
-
-        console.log(`Canvas resized: ${canvas.width}x${canvas.height}, Ground: ${groundLevel}`); // Log dimensions
-
-        // Adjust player position if player object exists and ground level is set
-        if (player.y !== undefined && groundLevel > 0) {
-            if (player.y + player.height > groundLevel || player.y === 0) { // Adjust if below ground or at initial 0
-                player.y = groundLevel - player.height;
-                player.velocityY = 0;
-                player.isOnGround = true;
-                console.log(`Adjusted player Y to ${player.y}`); // Log player adjustment
-            }
+        function read(key) {
+            try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
         }
 
-        // --- ENSURE SUN/MOON UPDATE ---
-        // Update sun/moon position if scenery objects exist AND canvas has valid width
-        if (scenery.sun && canvas.width > 0 && scenery.sun.width > 0) { // Check sun width too
-            scenery.sun.x = (canvas.width / 2) - (scenery.sun.width / 2);
-            console.log(`Sun X set to: ${scenery.sun.x}`); // Debug log
-        }
-        if (scenery.moon && canvas.width > 0 && scenery.moon.width > 0) { // Check moon width too
-            scenery.moon.x = (canvas.width / 2) - (scenery.moon.width / 2);
-            console.log(`Moon X set to: ${scenery.moon.x}`); // Debug log
-        }
-        // --- END ENSURE ---
-    }
-
-    function jump() {
-        if (gameState === 'PLAYING' && player.isOnGround) {
-            console.log("Jump!");
-            player.velocityY = jumpPower;
-            player.isOnGround = false;
-        }
-    }
-
-    function init() {
-        console.log("Initializing listeners and first resize.");
-        setupButtonListeners();
-        loadHighScores();
-        resizeCanvas(); // Initial resize after setup
-        console.log("Initialization complete. Waiting for user action.");
-    }
-
-    function setupButtonListeners() {
-        console.log("Setting up button listeners...");
-        buttons.start.addEventListener('click', startGame);
-        buttons.viewScores.addEventListener('click', showHighScoreScreen);
-        buttons.menuFromScores.addEventListener('click', () => showScreen('mainMenu'));
-        buttons.restart.addEventListener('click', startGame);
-        buttons.menuFromGameOver.addEventListener('click', () => showScreen('mainMenu'));
-        buttons.pause.addEventListener('click', togglePause);
-        buttons.submitScore.addEventListener('click', submitHighScore);
-        buttons.resume.addEventListener('click', resumeGame);
-        buttons.returnTitle.addEventListener('click', returnToTitle);
-    }
-
-    function showScreen(screenId) {
-        console.log(`Showing screen: ${screenId}`);
-        for (let key in screens) screens[key].classList.remove('active');
-        screens[screenId].classList.add('active');
-    }
-
-    // --- 5. GAME START & RESET ---
-    function startGame() {
-        console.log("--- Starting game sequence ---");
-        cancelAnimationFrame(animationFrameId);
-        clearInterval(countdownIntervalId); countdownIntervalId = null;
-        pauseOverlay.style.display = 'none';
-
-        // 1. Show screen first to ensure elements are measurable
-        showScreen('game');
-
-        // 2. NOW resize and reset
-        console.log("Calling resizeCanvas from startGame...");
-        resizeCanvas(); // Ensure dimensions are set based on VISIBLE element
-        console.log("Calling resetGame from startGame...");
-        resetGame(); // Reset objects based on dimensions
-
-        // 3. Force groundLevel calc and set player Y
-        groundLevel = canvas.height - grassHeight; // Recalculate AFTER resize
-        if (groundLevel > 0 && player.height > 0) {
-            player.y = groundLevel - player.height;
-            player.isOnGround = true;
-            console.log("Player Y set in startGame using groundLevel:", groundLevel, "Player Y:", player.y);
-        } else {
-             console.error("Ground level STILL not set or invalid during startGame! Canvas H:", canvas.height, "Grass H:", grassHeight);
-             // Provide a more sensible fallback based on potentially available height
-             const fallbackGround = canvas.clientHeight > 0 ? canvas.clientHeight * 0.8 : 150; // Use clientHeight or a default
-             player.y = fallbackGround - (player.height || 60); // Use player height or default
-             player.isOnGround = true;
-             console.log(`Applied fallback Player Y: ${player.y}`);
+        function cleanBoard(list) {
+            if (!Array.isArray(list)) return [];
+            return list
+                .filter((e) => e && Number.isFinite(Number(e.value)) && Number(e.value) > 0)
+                .map((e) => ({ name: String(e.name || 'Harunbe').slice(0, 12), value: Math.floor(Number(e.value)), date: e.date || null }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, BOARD_SIZE);
         }
 
-        gameState = 'PLAYING';
-        console.log("Starting main game loop...");
-        // Use rAF to ensure rendering context is ready
-        animationFrameId = requestAnimationFrame(mainGameLoop);
-    }
-
-    function resetGame() {
-        console.log("Resetting game variables...");
-        isJumping = false; speedMultiplier = 1.0; score = 0;
-        items = []; enemies = [];
-        // Initialize player with default y=0, will be set correctly in startGame
-        player = { x: 150, y: 0, width: 60, height: 60, velocityY: 0, isOnGround: true };
-        scenery = { sun: { x: 0, y: -200, width: 100, height: 100 }, moon: { x: 0, y: -200, width: 100, height: 100 }, clouds: [] };
-        timeToNextBanana = 100; timeToNextEnemy = 200;
-        currentCycleState = 'DAY'; nightOpacity = 0; dayOpacity = 1;
-        scenery.clouds = [];
-        // Add clouds only if canvas has dimensions
-        if (canvas.width > 0 && canvas.height > 0) {
-             for (let i = 0; i < 3; i++) {
-                 scenery.clouds.push({ x: Math.random() * canvas.width, y: Math.random() * (canvas.height * 0.4), width: 128, height: 70 });
-             }
-        }
-        // Set sun/moon position only if groundLevel is valid
-        if (scenery.sun && groundLevel > 0) {
-            scenery.sun.y = Math.random() * (groundLevel - scenery.sun.height);
-            scenery.moon.y = -200;
-        } else if (scenery.sun) {
-             // Fallback position if groundLevel isn't ready
-             scenery.sun.y = 50;
-             scenery.moon.y = -200;
-        }
-        console.log("Game reset complete.");
-    }
-
-
-    // --- 6. HIGH SCORE LOGIC ---
-    function loadHighScores() {
-        console.log("Loading high scores...");
-        const scores = localStorage.getItem('haRUNbeHighScores');
-        highScores = scores ? JSON.parse(scores) : [];
-        updateHighScoreDisplay();
-    }
-    function saveHighScores() {
-        console.log("Saving high scores...");
-        localStorage.setItem('haRUNbeHighScores', JSON.stringify(highScores));
-    }
-    function updateHighScoreDisplay() {
-        scoreList.innerHTML = '';
-        if (highScores.length === 0) {
-             scoreList.innerHTML = '<li>No scores yet!</li>';
-             return;
-        }
-        highScores.forEach(s => { const li = document.createElement('li'); li.textContent = `${s.name}: ${s.score}`; scoreList.appendChild(li); });
-    }
-    function showHighScoreScreen() {
-        loadHighScores();
-        showScreen('highScore');
-    }
-    function isNewHighScore() {
-        if (highScores.length < 5) return true;
-        return score > highScores[highScores.length - 1].score;
-    }
-    function submitHighScore() {
-        const name = nameInput.value.trim() || 'Harunbe';
-        // Ensure score is a number before saving
-        const finalScore = Math.floor(score);
-        highScores.push({ name, score: finalScore });
-        highScores.sort((a,b)=>b.score-a.score);
-        highScores = highScores.slice(0,5);
-        saveHighScores();
-        nameInput.value = '';
-        showHighScoreScreen();
-    }
-
-    // --- 7. PAUSE & RESUME LOGIC ---
-    function togglePause() {
-        console.log(`Toggle Pause called. Current state: ${gameState}`);
-        if (gameState === 'PLAYING') {
-            pauseGame();
-        }
-        // Resume is handled explicitly by the resume button
-    }
-    function pauseGame() {
-        if (gameState !== 'PLAYING') return;
-        console.log("Pausing game...");
-        gameState = 'PAUSED';
-        cancelAnimationFrame(animationFrameId); // Stop the animation loop
-        clearInterval(countdownIntervalId); // Clear any active countdown
-        countdownIntervalId = null;
-        overlayText.textContent = "PAUSED";
-        const pbContainer = document.getElementById('pause-buttons');
-        if (pbContainer) pbContainer.style.display = 'flex'; // Ensure buttons are visible
-        pauseOverlay.style.display = 'flex'; // Show the overlay
-        console.log("Game paused.");
-    }
-
-    function resumeGame() {
-        if (gameState !== 'PAUSED' || countdownIntervalId) return;
-
-        console.log("Attempting to resume..."); // Log entry
-        overlayText.textContent = ""; // Clear PAUSED
-
-        // Get element reference *inside* function
-        const currentPauseButtonsContainer = document.getElementById('pause-buttons'); // Get it ONCE here
-
-        if (currentPauseButtonsContainer) {
-            console.log("Found pause-buttons directly.");
-            currentPauseButtonsContainer.style.display = 'none'; // Hide buttons
-        } else {
-            // Log if not found, but proceed with countdown
-            console.error("resumeGame: Could not find pause buttons container!");
-        }
-
-        let count = 3;
-        overlayText.textContent = count;
-        console.log(`Starting countdown: ${count}`);
-
-        countdownIntervalId = setInterval(() => {
-            count--;
-            console.log(`Countdown: ${count > 0 ? count : 'Resume!'}`);
-            if (count > 0) {
-                overlayText.textContent = count;
+        function load() {
+            const stored = read(KEY);
+            data = blank();
+            if (stored && typeof stored === 'object') {
+                data.distanceBoard = cleanBoard(stored.distanceBoard);
+                data.bananaBoard = cleanBoard(stored.bananaBoard);
+                data.bestDistance = Math.max(0, Math.floor(Number(stored.bestDistance) || 0));
+                data.mostBananas = Math.max(0, Math.floor(Number(stored.mostBananas) || 0));
+                data.lastName = typeof stored.lastName === 'string' ? stored.lastName.slice(0, 12) : '';
             } else {
-                clearInterval(countdownIntervalId); countdownIntervalId = null;
-                pauseOverlay.style.display = 'none'; // Hide overlay
-
-                // --- MODIFICATION: Use the reference we already got ---
-                // Re-find and show buttons (using the same robust method)
-                // const finalPauseButtonsContainer = document.getElementById('pause-buttons'); // DON'T find it again
-                if (currentPauseButtonsContainer) { // Use the variable from the outer scope
-                    currentPauseButtonsContainer.style.display = 'flex'; // Show buttons again
-                } else {
-                     console.error("resumeGame countdown: Could not find pause buttons container to re-display!"); // Keep error log just in case
+                // Migrate the old single "score" list. Its score counted bananas, so it
+                // becomes the banana leaderboard; the old key is left untouched.
+                const legacy = read(LEGACY_KEY);
+                if (Array.isArray(legacy)) {
+                    data.bananaBoard = cleanBoard(legacy.map((e) => ({ name: e && e.name, value: e && e.score })));
+                    if (data.bananaBoard.length) save();
                 }
-                // --- END MODIFICATION ---
-
-                gameState = 'PLAYING';
-                console.log("Resuming game loop...");
-                animationFrameId = requestAnimationFrame(mainGameLoop); // Restart loop
             }
-        }, 1000);
+            // Records are never lower than the best leaderboard entry.
+            if (data.distanceBoard[0]) data.bestDistance = Math.max(data.bestDistance, data.distanceBoard[0].value);
+            if (data.bananaBoard[0]) data.mostBananas = Math.max(data.mostBananas, data.bananaBoard[0].value);
+        }
+
+        function save() {
+            try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* storage full or blocked */ }
+        }
+
+        function qualifies(board, value) {
+            return value > 0 && (board.length < BOARD_SIZE || value > board[board.length - 1].value);
+        }
+
+        // Called once per finished run. Updates records immediately and reports what happened.
+        function finishRun(distance, bananas) {
+            const result = {
+                distance, bananas,
+                newDistance: distance > data.bestDistance,
+                newBananas: bananas > data.mostBananas,
+                boardDistance: qualifies(data.distanceBoard, distance),
+                boardBananas: qualifies(data.bananaBoard, bananas),
+                committed: false
+            };
+            if (result.newDistance) data.bestDistance = distance;
+            if (result.newBananas) data.mostBananas = bananas;
+            save();
+            return result;
+        }
+
+        function insert(board, name, value) {
+            const date = new Date().toISOString().slice(0, 10);
+            board.push({ name, value, date });
+            board.sort((a, b) => b.value - a.value);
+            board.length = Math.min(board.length, BOARD_SIZE);
+        }
+
+        function commitEntry(result, rawName) {
+            if (!result || result.committed) return;
+            result.committed = true;
+            if (!result.boardDistance && !result.boardBananas) return;
+            const name = (rawName || '').trim().slice(0, 12) || 'Harunbe';
+            if (result.boardDistance) insert(data.distanceBoard, name, result.distance);
+            if (result.boardBananas) insert(data.bananaBoard, name, result.bananas);
+            data.lastName = name;
+            save();
+        }
+
+        return { load, finishRun, commitEntry, get data() { return data; } };
+    })();
+
+    // =====================================================================
+    // View / canvas sizing
+    // =====================================================================
+
+    // The world is drawn in world units. The 540-unit gameplay band always fits the screen;
+    // wider screens see further ahead, taller (portrait) screens get more sky and ground.
+    const view = { cssW: 0, cssH: 0, dpr: 1, scale: 1, k: 1, w: CONFIG.MIN_VIEW_W, h: CONFIG.WORLD_H, top: 0 };
+    let duskGradient = null;
+    let needsRender = true;
+
+    function resize() {
+        const cssW = Math.max(1, window.innerWidth);
+        const cssH = Math.max(1, window.innerHeight);
+        let dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const maxPixels = 4000000; // keep the backing store reasonable on large/high-DPI screens
+        if (cssW * cssH * dpr * dpr > maxPixels) dpr = Math.sqrt(maxPixels / (cssW * cssH));
+
+        view.cssW = cssW;
+        view.cssH = cssH;
+        view.dpr = dpr;
+        view.scale = Math.min(cssH / CONFIG.WORLD_H, cssW / CONFIG.MIN_VIEW_W);
+        view.w = cssW / view.scale;
+        view.h = cssH / view.scale;
+        view.top = -(view.h - CONFIG.WORLD_H) * 0.7;
+        view.k = view.scale * dpr;
+
+        const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+        if (dom.canvas.width !== bw || dom.canvas.height !== bh) {
+            dom.canvas.width = bw;
+            dom.canvas.height = bh;
+        }
+        duskGradient = null;
+        needsRender = true;
+        updateOrientationUI();
+        if (loopRunning()) return;
+        if (run.state !== 'menu') requestLoop();
     }
 
-    function returnToTitle() {
-        console.log("Returning to title screen...");
-        clearInterval(countdownIntervalId); countdownIntervalId = null;
-        cancelAnimationFrame(animationFrameId);
-        gameState = 'MENU';
-        pauseOverlay.style.display = 'none';
-        showScreen('mainMenu');
+    // =====================================================================
+    // Run state
+    // =====================================================================
+
+    // States: menu | playing | paused | countdown | dying | gameover
+    const run = {
+        state: 'menu',
+        trackPos: 0, prevTrackPos: 0,
+        distance: 0,          // world units travelled while actually playing
+        speed: CONFIG.speed.start,
+        bananas: 0,
+        player: E.createPlayer(),
+        prevAlt: 0,
+        entities: [],
+        gen: null,
+        cycleTime: 0,
+        clock: 0,             // cosmetic animation time (advances only when the world moves)
+        dieTime: 0,
+        countdown: 0,
+        pauseReason: '',
+        result: null
+    };
+
+    const clouds = [];
+    const popups = []; // "+1" banana pop-ups, reused
+    for (let i = 0; i < 8; i++) popups.push({ life: 0, x: 0, y: 0 });
+
+    function resetRun() {
+        run.trackPos = run.prevTrackPos = 0;
+        run.distance = 0;
+        run.speed = CONFIG.speed.start;
+        run.bananas = 0;
+        run.player = E.createPlayer();
+        run.prevAlt = 0;
+        run.entities.length = 0;
+        run.gen = E.createGenerator();
+        E.generateUntil(run.gen, view.w + CONFIG.aheadUnits, run.entities);
+        run.cycleTime = 0;
+        run.clock = 0;
+        run.dieTime = 0;
+        run.result = null;
+        run.pauseReason = '';
+        for (const p of popups) p.life = 0;
+        resetClouds();
+        input.reset();
+        hud.last.bananas = hud.last.meters = -1;
+        updateHud();
     }
 
-    // --- 8. GAME OVER LOGIC ---
-    function startGameOverSequence() {
-        console.log("Starting game over sequence...");
-        gameState = 'DYING';
-        isJumping = false; // Prevent jumping while dying
-    }
-    function handleGameOver() {
-        console.log("Handling game over. Final Score:", Math.floor(score));
-        gameState = 'GAMEOVER'; // Ensure state is correct
-        cancelAnimationFrame(animationFrameId); // Make sure loop is stopped
-        if (isNewHighScore()) {
-            console.log("New high score!");
-            finalScoreInputDisplay.textContent = Math.floor(score);
-            showScreen('enterScore');
-        } else {
-            console.log("Not a high score.");
-            finalScoreDisplay.textContent = Math.floor(score);
-            showScreen('finalScore');
+    function resetClouds() {
+        clouds.length = 0;
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: (i + Math.random() * 0.6) * (view.w / 5),
+                y: cloudY(),
+                size: 110 + Math.random() * 70,
+                drift: 4 + Math.random() * 6
+            });
         }
     }
 
-    // --- 9. COLLISION ---
-    function checkCollision(rect1, rect2) {
-        // Add safety checks for properties existence
-        if (!rect1 || !rect2 ||
-            rect1.x === undefined || rect1.y === undefined || rect1.width === undefined || rect1.height === undefined ||
-            rect2.x === undefined || rect2.y === undefined || rect2.width === undefined || rect2.height === undefined) {
-             // console.warn("Collision check failed: Invalid rect data", rect1, rect2);
-             return false;
-        }
-        return !(rect2.x > rect1.x + rect1.width ||
-                 rect2.x + rect2.width < rect1.x ||
-                 rect2.y > rect1.y + rect1.height ||
-                 rect2.y + rect2.height < rect1.y);
+    // Clouds stay in the upper sky; portrait screens have more of it.
+    function cloudY() { return view.top + 30 + Math.random() * (150 - view.top * 0.8); }
+
+    function meters() { return Math.floor(run.distance / CONFIG.UNITS_PER_METER); }
+
+    // =====================================================================
+    // Input
+    // =====================================================================
+
+    const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW']);
+    const input = {
+        keys: new Set(),
+        pointers: new Set(),
+        get held() { return this.keys.size > 0 || this.pointers.size > 0; },
+        reset() { this.keys.clear(); this.pointers.clear(); }
+    };
+
+    function isTyping(target) {
+        return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
     }
 
-    // --- 10. MAIN GAME LOOP ---
-    function mainGameLoop() {
-        // Primary exit condition: only loop if playing or dying
-        if (gameState !== 'PLAYING' && gameState !== 'DYING') {
-            console.log(`Game loop stopping. State: ${gameState}`);
-            // Check if game over needs to be handled *after* stopping
-            if (gameState === 'GAMEOVER') {
-                // Ensure handleGameOver runs if state was set elsewhere (e.g., during DYING check)
-                 // but avoid calling it repeatedly if already handled.
-                 // We might not need this call here if DYING handles it reliably.
-                 // handleGameOver();
+    function press() {
+        if (run.state === 'playing') E.pressJump(run.player);
+    }
+
+    function setupInput() {
+        const area = dom.canvas;
+        area.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            if (run.state !== 'playing') return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            try { area.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+            input.pointers.add(e.pointerId);
+            press();
+        });
+        const release = (e) => { input.pointers.delete(e.pointerId); };
+        area.addEventListener('pointerup', release);
+        area.addEventListener('pointercancel', release);
+        area.addEventListener('lostpointercapture', release);
+        window.addEventListener('pointerup', release);
+
+        // Block long-press menus, double-tap zoom and scrolling on the game screen.
+        dom.screens.game.addEventListener('contextmenu', (e) => e.preventDefault());
+        area.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        area.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            if (isTyping(e.target)) {
+                if (e.key === 'Enter' && e.target === dom.nameInput) saveName();
+                return;
             }
+            const inGame = run.state !== 'menu';
+            if (JUMP_KEYS.has(e.code)) {
+                if (!inGame) return;                   // menus keep normal keyboard behaviour
+                e.preventDefault();                   // no page scroll / button activation
+                if (e.repeat || run.state !== 'playing') return;
+                input.keys.add(e.code);
+                press();
+            } else if (e.code === 'KeyP' || e.code === 'Escape') {
+                if (!inGame || e.repeat) return;
+                e.preventDefault();
+                togglePause();
+            } else if (e.code === 'Enter' && run.state === 'paused') {
+                e.preventDefault();
+                resume();
+            }
+        });
+        window.addEventListener('keyup', (e) => { input.keys.delete(e.code); });
+
+        // Lost focus / backgrounded: drop held input and pause so returning is never fatal.
+        window.addEventListener('blur', () => { input.reset(); pauseFor('blur'); });
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { input.reset(); pauseFor('hidden'); }
+        });
+        window.addEventListener('pagehide', () => { input.reset(); pauseFor('hidden'); });
+    }
+
+    // =====================================================================
+    // Game loop (fixed-step simulation, interpolated rendering)
+    // =====================================================================
+
+    let rafId = 0;
+    let lastTime = -1;
+    let accumulator = 0;
+
+    function loopRunning() { return rafId !== 0; }
+
+    function requestLoop() {
+        if (rafId) return;
+        lastTime = -1;
+        rafId = requestAnimationFrame(frame);
+    }
+
+    function stopLoop() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = 0;
+    }
+
+    function frame(now) {
+        rafId = requestAnimationFrame(frame);
+        let dt = lastTime < 0 ? 0 : (now - lastTime) / 1000;
+        lastTime = now;
+        if (!(dt > 0) || dt > 0.25) dt = 0;          // stalled (tab switch, debugger): skip
+        else if (dt > CONFIG.MAX_FRAME) dt = CONFIG.MAX_FRAME;
+
+        const STEP = CONFIG.STEP;
+        let alpha = 1;
+        switch (run.state) {
+            case 'playing':
+            case 'dying':
+                accumulator += dt;
+                while (accumulator >= STEP) {
+                    accumulator -= STEP;
+                    if (run.state === 'playing') stepPlaying(STEP);
+                    else if (run.state === 'dying') stepDying(STEP);
+                    else { accumulator = 0; break; }
+                }
+                alpha = accumulator / STEP;
+                if (run.state === 'playing') {
+                    // Keep the world generated ahead of the view (at most one cluster per frame).
+                    if (run.gen.cursor < run.trackPos + view.w + CONFIG.aheadUnits) {
+                        E.generateSegment(run.gen, run.entities);
+                    }
+                    cullEntities();
+                    updateHud();
+                }
+                needsRender = true;
+                break;
+            case 'countdown':
+                run.countdown -= dt;
+                if (run.countdown <= 0) {
+                    beginPlaying();
+                } else {
+                    const n = String(Math.ceil(run.countdown / COUNTDOWN_TICK));
+                    if (dom.countdownText.textContent !== n) dom.countdownText.textContent = n;
+                }
+                break;
+            default:
+                break;
+        }
+
+        if (needsRender) {
+            render(alpha);
+            needsRender = false;
+        }
+        if (run.state === 'paused' || run.state === 'gameover' || run.state === 'menu') stopLoop();
+    }
+
+    function stepPlaying(dt) {
+        run.prevTrackPos = run.trackPos;
+        run.prevAlt = run.player.alt;
+
+        const s = E.speedFor(run.distance);
+        run.speed = s;
+        run.trackPos += s * dt;
+        run.distance += s * dt;
+        run.cycleTime += dt;
+        run.clock += dt;
+        E.stepPlayer(run.player, input.held, dt);
+        updateClouds(dt, s);
+        updatePopups(dt);
+        checkCollisions();
+    }
+
+    const DIE_DURATION = 1.5;
+
+    function stepDying(dt) {
+        run.prevTrackPos = run.trackPos;
+        run.prevAlt = run.player.alt;
+        run.dieTime += dt;
+        const slow = Math.max(0, 1 - run.dieTime / 0.8);
+        run.trackPos += run.speed * slow * slow * dt;   // world skids to a halt
+        run.clock += dt * slow;
+        E.stepPlayer(run.player, false, dt);           // gorilla drops to the ground
+        updateClouds(dt * slow, run.speed);
+        updatePopups(dt);
+        if (run.dieTime >= DIE_DURATION) showResults();
+    }
+
+    const playerBox = E.makeBox();
+    const collectBox = E.makeBox();
+
+    function checkCollisions() {
+        E.playerBox(run.player.alt, run.trackPos, playerBox);
+        // Bananas are collected with a slightly larger box: generous pickups feel good.
+        collectBox.x0 = playerBox.x0 - 6; collectBox.x1 = playerBox.x1 + 6;
+        collectBox.y0 = playerBox.y0 - 6; collectBox.y1 = playerBox.y1 + 6;
+
+        const list = run.entities;
+        for (let i = 0; i < list.length; i++) {
+            const e = list[i];
+            if (e.collected || e.hit.x0 > collectBox.x1 || e.hit.x1 < collectBox.x0) continue;
+            if (e.type === 'banana') {
+                if (E.overlaps(collectBox, e.hit)) {
+                    e.collected = true;
+                    run.bananas++;
+                    spawnPopup(e.x - run.trackPos + e.size / 2, e.top);
+                }
+            } else if (E.overlaps(playerBox, e.hit)) {
+                die();
+                return;
+            }
+        }
+    }
+
+    function cullEntities() {
+        const list = run.entities;
+        const limit = run.trackPos - CONFIG.cullUnits;
+        let j = 0;
+        for (let i = 0; i < list.length; i++) {
+            const e = list[i];
+            if (e.x + e.size >= limit && !e.collected) list[j++] = e;
+        }
+        list.length = j;
+    }
+
+    function updateClouds(dt, speed) {
+        for (const c of clouds) {
+            c.x -= (speed * 0.06 + c.drift) * dt;
+            if (c.x + c.size < 0) {
+                c.x = view.w + Math.random() * 200;
+                c.y = cloudY();
+                c.size = 110 + Math.random() * 70;
+            }
+        }
+    }
+
+    function spawnPopup(x, y) {
+        let p = popups[0];
+        for (const q of popups) if (q.life <= 0) { p = q; break; }
+        p.life = 0.7; p.x = x; p.y = y;
+    }
+
+    function updatePopups(dt) {
+        for (const p of popups) if (p.life > 0) { p.life -= dt; p.y -= 60 * dt; }
+    }
+
+    // =====================================================================
+    // Day / night cycle
+    // =====================================================================
+
+    // phase 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight.
+    const sky = { phase: 0, night: 0, dusk: 0, sunElev: 0 };
+
+    function updateSky() {
+        const phase = (CONFIG.cycle.start + run.cycleTime / CONFIG.cycle.seconds) % 1;
+        const elev = Math.sin(phase * Math.PI * 2);
+        sky.phase = phase;
+        sky.sunElev = elev;
+        sky.night = smoothstep(0.25, -0.25, elev);
+        sky.dusk = Math.exp(-(elev * elev) / (0.28 * 0.28));
+    }
+
+    function smoothstep(a, b, x) {
+        const t = clamp((x - a) / (b - a), 0, 1);
+        return t * t * (3 - 2 * t);
+    }
+
+    // Position on the sky arc for progress q (0 = rising at the left, 1 = setting at the right).
+    function arcPosition(q, out) {
+        const horizon = GROUND_Y - 105; // roughly the jungle skyline: sun and moon sink behind the trees
+        const peak = Math.max(view.top + 80, 70);
+        const qc = clamp(q, 0, 1);
+        out.x = lerp(0.07, 0.93, q) * view.w;
+        out.y = horizon - Math.sin(qc * Math.PI) * (horizon - peak) + Math.abs(q - qc) * 900;
+        return out;
+    }
+
+    // =====================================================================
+    // Rendering
+    // =====================================================================
+
+    const COLORS = {
+        farDay: [86, 158, 92], farNight: [24, 44, 60], farDusk: [150, 110, 90],
+        treeDay: [40, 112, 52], treeNight: [14, 32, 36], treeDusk: [90, 70, 60],
+        nearDay: [34, 120, 48], nearNight: [12, 36, 30],
+        grassDay: [70, 170, 80], grassNight: [26, 70, 52],
+        soilDay: [96, 70, 42], soilNight: [36, 32, 48],
+        tuftDay: [44, 130, 56], tuftNight: [18, 52, 40]
+    };
+
+    function mixColor(day, night, n, dusk, d) {
+        let r = lerp(day[0], night[0], n), g = lerp(day[1], night[1], n), b = lerp(day[2], night[2], n);
+        if (dusk && d > 0) { r = lerp(r, dusk[0], d); g = lerp(g, dusk[1], d); b = lerp(b, dusk[2], d); }
+        return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+    }
+
+    function hash(i) {
+        const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+        return x - Math.floor(x);
+    }
+
+    const tmpPos = { x: 0, y: 0 };
+
+    function render(alpha) {
+        const k = view.k;
+        const trackPos = lerp(run.prevTrackPos, run.trackPos, alpha);
+        const alt = lerp(run.prevAlt, run.player.alt, alpha);
+        updateSky();
+
+        ctx.setTransform(k, 0, 0, k, 0, -view.top * k);
+        ctx.globalAlpha = 1;
+
+        drawSky();
+        drawCelestial();
+        drawClouds();
+        drawLandscape(trackPos);
+        drawGround(trackPos);
+        drawEntities(trackPos);
+        drawPlayer(alt);
+        drawPopups();
+        if (run.state === 'dying' || run.state === 'gameover') drawWasted();
+    }
+
+    function drawCover(image, x, y, w, h) {
+        const ir = image.width / image.height, r = w / h;
+        let sw = image.width, sh = image.height, sx = 0, sy = 0;
+        if (ir > r) { sw = sh * r; sx = (image.width - sw) / 2; } else { sh = sw / r; sy = image.height - sh; }
+        ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
+    }
+
+    function drawSky() {
+        const top = view.top, h = GROUND_Y - top + 4;
+        if (img.skyDay) drawCover(img.skyDay, 0, top, view.w, h);
+        else { ctx.fillStyle = '#4a90d9'; ctx.fillRect(0, top, view.w, h); }
+
+        if (sky.night > 0.001) {
+            ctx.globalAlpha = sky.night;
+            if (img.skyNight) drawCover(img.skyNight, 0, top, view.w, h);
+            else { ctx.fillStyle = '#0b1530'; ctx.fillRect(0, top, view.w, h); }
+        }
+        if (sky.dusk > 0.01) {
+            if (!duskGradient) {
+                duskGradient = ctx.createLinearGradient(0, GROUND_Y, 0, top);
+                duskGradient.addColorStop(0, 'rgba(255,140,60,0.9)');
+                duskGradient.addColorStop(0.35, 'rgba(250,95,110,0.45)');
+                duskGradient.addColorStop(1, 'rgba(90,50,140,0)');
+            }
+            ctx.globalAlpha = sky.dusk * 0.85;
+            ctx.fillStyle = duskGradient;
+            ctx.fillRect(0, top, view.w, h);
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function drawCelestial() {
+        const p = sky.phase;
+        // Sun: phase 0..0.5 (slightly extended so it slides in/out behind the jungle).
+        const qs = p < 0.75 ? p / 0.5 : (p - 1) / 0.5;
+        if (qs > -0.12 && qs < 1.12) {
+            arcPosition(qs, tmpPos);
+            drawSprite(img.sun, tmpPos.x - 48, tmpPos.y - 48, 96, '#ffd54a');
+        }
+        // Moon: phase 0.5..1.
+        const qm = p >= 0.25 ? (p - 0.5) / 0.5 : (p + 0.5) / 0.5;
+        if (qm > -0.12 && qm < 1.12) {
+            arcPosition(qm, tmpPos);
+            drawSprite(img.moon, tmpPos.x - 44, tmpPos.y - 44, 88, '#cfd6e0');
+        }
+    }
+
+    function drawClouds() {
+        const n = sky.night;
+        for (const c of clouds) {
+            if (n < 0.999 && img.cloudDay) {
+                ctx.globalAlpha = 1 - n;
+                ctx.drawImage(img.cloudDay, c.x, c.y, c.size, c.size);
+            }
+            if (n > 0.001 && img.cloudNight) {
+                ctx.globalAlpha = n;
+                ctx.drawImage(img.cloudNight, c.x, c.y, c.size, c.size);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // Distant hills and jungle, procedurally drawn with parallax so they tile forever and
+    // stay sharp at any resolution. Colours follow the day/night cycle.
+    function drawLandscape(trackPos) {
+        const n = sky.night, d = sky.dusk * (1 - n) * 0.3;
+        const w = view.w;
+
+        // Far hills (parallax 0.12)
+        let off = trackPos * 0.12;
+        ctx.fillStyle = mixColor(COLORS.farDay, COLORS.farNight, n, COLORS.farDusk, d);
+        ctx.beginPath();
+        ctx.moveTo(0, GROUND_Y + 2);
+        for (let x = 0; x <= w + 20; x += 20) {
+            const X = x + off;
+            const y = 350 + 22 * Math.sin(X * 0.004) + 14 * Math.sin(X * 0.011 + 1.3) - 10 * Math.abs(Math.sin(X * 0.03));
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w + 20, GROUND_Y + 2);
+        ctx.closePath();
+        ctx.fill();
+
+        // Jungle trees (parallax 0.3)
+        off = trackPos * 0.3;
+        const spacing = 150;
+        const first = Math.floor((off - 120) / spacing), last = Math.floor((off + w + 120) / spacing);
+        ctx.fillStyle = mixColor(COLORS.treeDay, COLORS.treeNight, n, COLORS.treeDusk, d);
+        ctx.beginPath();
+        for (let i = first; i <= last; i++) {
+            const h1 = hash(i);
+            if (h1 < 0.25) continue;
+            const x = i * spacing - off + hash(i + 50) * 80;
+            const height = 70 + hash(i + 99) * 70;
+            const topY = GROUND_Y - height;
+            ctx.rect(x - 5, topY, 10, height);
+            const r = 26 + h1 * 22;
+            ctx.moveTo(x + r, topY);
+            ctx.arc(x, topY, r, 0, Math.PI * 2);
+            ctx.moveTo(x - r * 0.6 + r * 0.8, topY + r * 0.35);
+            ctx.arc(x - r * 0.6, topY + r * 0.35, r * 0.8, 0, Math.PI * 2);
+            ctx.moveTo(x + r * 0.7 + r * 0.75, topY + r * 0.3);
+            ctx.arc(x + r * 0.7, topY + r * 0.3, r * 0.75, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        // Near bushes (parallax 0.55)
+        off = trackPos * 0.55;
+        ctx.fillStyle = mixColor(COLORS.nearDay, COLORS.nearNight, n);
+        ctx.beginPath();
+        ctx.moveTo(0, GROUND_Y + 2);
+        for (let x = 0; x <= w + 16; x += 16) {
+            const X = x + off;
+            const y = 412 + 8 * Math.sin(X * 0.013 + 2) - 14 * Math.abs(Math.sin(X * 0.045));
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w + 16, GROUND_Y + 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function drawGround(trackPos) {
+        const n = sky.night, w = view.w;
+        const bottom = view.top + view.h;
+
+        ctx.fillStyle = mixColor(COLORS.soilDay, COLORS.soilNight, n);
+        ctx.fillRect(0, GROUND_Y, w, bottom - GROUND_Y);
+        ctx.fillStyle = mixColor(COLORS.grassDay, COLORS.grassNight, n);
+        ctx.fillRect(0, GROUND_Y - 2, w, 20);
+
+        // Grass blades and pebbles scroll with the track: this sells the running motion.
+        ctx.fillStyle = mixColor(COLORS.tuftDay, COLORS.tuftNight, n);
+        ctx.beginPath();
+        const sp = 26;
+        const first = Math.floor(trackPos / sp) - 1, last = Math.ceil((trackPos + w) / sp) + 1;
+        for (let i = first; i <= last; i++) {
+            const x = i * sp - trackPos + hash(i) * 10;
+            const h = 6 + hash(i + 7) * 10;
+            ctx.moveTo(x - 4, GROUND_Y);
+            ctx.lineTo(x, GROUND_Y - h);
+            ctx.lineTo(x + 4, GROUND_Y);
+        }
+        const ps = 70;
+        const pf = Math.floor(trackPos / ps) - 1, pl = Math.ceil((trackPos + w) / ps) + 1;
+        for (let i = pf; i <= pl; i++) {
+            const x = i * ps - trackPos + hash(i + 3) * 40;
+            const y = GROUND_Y + 28 + hash(i + 11) * Math.max(10, bottom - GROUND_Y - 40);
+            ctx.rect(x, y, 10 + hash(i + 5) * 14, 4);
+        }
+        ctx.fill();
+    }
+
+    function drawSprite(image, x, y, size, fallbackColor) {
+        if (image) ctx.drawImage(image, x, y, size, size);
+        else {
+            ctx.fillStyle = fallbackColor;
+            ctx.beginPath();
+            ctx.arc(x + size / 2, y + size / 2, size * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function drawEntities(trackPos) {
+        const t = run.clock;
+        const list = run.entities;
+        const maxX = view.w + 10;
+        for (let i = 0; i < list.length; i++) {
+            const e = list[i];
+            const x = e.x - trackPos;
+            if (x > maxX || x + e.size < -10 || e.collected) continue;
+            if (e.type === 'banana') {
+                drawSprite(img.banana, x, e.top + Math.sin(t * 4 + e.phase) * 3, e.size, '#ffe135');
+            } else if (e.type === 'tiger') {
+                // Bounding gait: purely cosmetic, the hitbox stays put.
+                const bob = -Math.abs(Math.sin(t * 11 + e.phase)) * 4;
+                drawSprite(img.tiger, x, e.top + bob, e.size, '#f39c12');
+            } else {
+                const bob = Math.sin(t * 6 + e.phase) * 3;
+                const tilt = Math.sin(t * 6 + e.phase + 1) * 0.06;
+                ctx.save();
+                ctx.translate(x + e.size / 2, e.top + e.size / 2 + bob);
+                ctx.rotate(tilt);
+                drawSprite(img.hawk, -e.size / 2, -e.size / 2, e.size, '#7b4a2a');
+                ctx.restore();
+            }
+        }
+    }
+
+    function drawPlayer(alt) {
+        const def = SPRITES.gorilla;
+        const size = def.size;
+        const p = run.player;
+        let y = GROUND_Y - alt - def.feet * size;
+        let tilt = 0;
+        if (p.onGround && run.state === 'playing') y -= Math.abs(Math.sin(run.clock * 13)) * 4;
+        if (!p.onGround) tilt = clamp(-p.vy * 0.00018, -0.14, 0.14);
+        ctx.save();
+        ctx.translate(CONFIG.PLAYER_X + size / 2, y + size / 2);
+        ctx.rotate(tilt);
+        drawSprite(img.gorilla, -size / 2, -size / 2, size, '#333');
+        ctx.restore();
+    }
+
+    function drawPopups() {
+        ctx.font = 'bold 26px "Trebuchet MS", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffe135';
+        ctx.strokeStyle = 'rgba(60,40,0,0.8)';
+        ctx.lineWidth = 4;
+        for (const p of popups) {
+            if (p.life <= 0) continue;
+            ctx.globalAlpha = clamp(p.life / 0.4, 0, 1);
+            ctx.strokeText('+1', p.x, p.y);
+            ctx.fillText('+1', p.x, p.y);
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function drawWasted() {
+        const t = run.state === 'gameover' ? DIE_DURATION : run.dieTime;
+        const flash = Math.max(0, 1 - t / 0.25);
+        if (flash > 0) {
+            ctx.globalAlpha = flash * 0.5;
+            ctx.fillStyle = '#ff2020';
+            ctx.fillRect(0, view.top, view.w, view.h);
+        }
+        const a = clamp((t - 0.15) / 0.6, 0, 1);
+        ctx.globalAlpha = a * 0.6;
+        ctx.fillStyle = '#2a2a2a';
+        ctx.fillRect(0, view.top, view.w, view.h);
+        if (run.state === 'dying') {
+            ctx.globalAlpha = a;
+            ctx.font = 'bold 92px Impact, "Arial Black", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.lineWidth = 8;
+            ctx.strokeStyle = '#1a0000';
+            ctx.fillStyle = '#d61f1f';
+            ctx.strokeText('WASTED', view.w / 2, CONFIG.WORLD_H / 2);
+            ctx.fillText('WASTED', view.w / 2, CONFIG.WORLD_H / 2);
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // =====================================================================
+    // HUD (DOM, touched only when a displayed value changes)
+    // =====================================================================
+
+    const numberFormat = new Intl.NumberFormat();
+    const hud = { last: { bananas: -1, meters: -1 } };
+
+    function updateHud() {
+        const m = meters();
+        if (m !== hud.last.meters) { hud.last.meters = m; dom.hudDistance.textContent = numberFormat.format(m) + ' m'; }
+        if (run.bananas !== hud.last.bananas) { hud.last.bananas = run.bananas; dom.hudBananas.textContent = numberFormat.format(run.bananas); }
+    }
+
+    // =====================================================================
+    // Flow: screens, start, pause, countdown, game over
+    // =====================================================================
+
+    const COUNTDOWN_TICK = 0.75; // seconds per countdown number
+    let portraitAccepted = false;
+
+    function showScreen(name) {
+        for (const key of Object.keys(dom.screens)) dom.screens[key].classList.toggle('active', key === name);
+        document.body.classList.toggle('in-game', name === 'game');
+        updateOrientationUI();
+    }
+
+    function setOverlay(el, visible) { el.classList.toggle('hidden', !visible); }
+
+    function blurActive() {
+        if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    }
+
+    function startGame() {
+        if (!assetsReady) return;
+        if (run.state !== 'menu' && run.state !== 'gameover') return; // ignore double taps
+        if (run.result) Records.commitEntry(run.result, dom.nameInput.value);
+        requestLandscape();
+
+        showScreen('game');
+        resize();
+        resetRun();
+        setOverlay(dom.pauseOverlay, false);
+        setOverlay(dom.countdown, false);
+        setOverlay(dom.results, false);
+        blurActive();
+        beginPlaying();
+        updateOrientationUI(); // portrait on a phone: pause behind the rotate prompt
+    }
+
+    function beginPlaying() {
+        run.state = 'playing';
+        accumulator = 0;
+        input.reset();
+        setOverlay(dom.countdown, false);
+        dom.pauseBtn.classList.remove('hidden');
+        requestLoop();
+    }
+
+    function pauseFor(reason) {
+        if (run.state !== 'playing' && run.state !== 'countdown') return;
+        run.state = 'paused';
+        run.pauseReason = reason;
+        input.reset();
+        setOverlay(dom.countdown, false);
+        setOverlay(dom.pauseOverlay, true);
+        needsRender = true;
+        requestLoop(); // draws the frozen frame once, then stops
+    }
+
+    function resume() {
+        if (run.state !== 'paused' || needsRotate()) return;
+        run.state = 'countdown';
+        run.countdown = COUNTDOWN_TICK * 3;
+        run.pauseReason = '';
+        input.reset();
+        blurActive();
+        setOverlay(dom.pauseOverlay, false);
+        dom.countdownText.textContent = '3';
+        setOverlay(dom.countdown, true);
+        requestLoop();
+    }
+
+    function togglePause() {
+        if (run.state === 'playing' || run.state === 'countdown') pauseFor('user');
+        else if (run.state === 'paused') resume();
+    }
+
+    function goToMenu() {
+        if (run.result) Records.commitEntry(run.result, dom.nameInput.value);
+        run.state = 'menu';
+        run.result = null;
+        stopLoop();
+        input.reset();
+        setOverlay(dom.pauseOverlay, false);
+        setOverlay(dom.countdown, false);
+        setOverlay(dom.results, false);
+        refreshMenu();
+        showScreen('menu');
+    }
+
+    function die() {
+        run.state = 'dying';
+        run.dieTime = 0;
+        input.reset();
+        dom.pauseBtn.classList.add('hidden');
+        if (navigator.vibrate) { try { navigator.vibrate(120); } catch { /* unsupported */ } }
+        run.result = Records.finishRun(meters(), run.bananas);
+    }
+
+    function showResults() {
+        run.state = 'gameover';
+        needsRender = true;
+        const r = run.result;
+        const rec = Records.data;
+        dom.resDistance.textContent = numberFormat.format(r.distance) + ' m';
+        dom.resBananas.textContent = numberFormat.format(r.bananas);
+        dom.resBestDistance.textContent = numberFormat.format(rec.bestDistance) + ' m';
+        dom.resMostBananas.textContent = numberFormat.format(rec.mostBananas);
+        setOverlay(dom.resDistanceBadge, r.newDistance);
+        setOverlay(dom.resBananasBadge, r.newBananas);
+
+        const onBoard = r.boardDistance || r.boardBananas;
+        setOverlay(dom.entry, onBoard);
+        if (onBoard) {
+            const which = r.boardDistance && r.boardBananas ? 'both Top 5 lists'
+                : r.boardDistance ? 'the Top 5 distances' : 'the Top 5 banana hauls';
+            dom.entryText.textContent = 'You made ' + which + '! Enter your name:';
+            dom.nameInput.value = rec.lastName;
+            dom.nameInput.disabled = false;
+            dom.saveNameBtn.disabled = false;
+            dom.saveNameBtn.textContent = 'Save';
+        }
+        setOverlay(dom.results, true);
+    }
+
+    function saveName() {
+        if (!run.result || run.result.committed) return;
+        Records.commitEntry(run.result, dom.nameInput.value);
+        dom.nameInput.disabled = true;
+        dom.saveNameBtn.disabled = true;
+        dom.saveNameBtn.textContent = 'Saved';
+        dom.nameInput.blur();
+    }
+
+    function refreshMenu() {
+        const rec = Records.data;
+        dom.menuBest.textContent = rec.bestDistance || rec.mostBananas
+            ? 'Best ' + numberFormat.format(rec.bestDistance) + ' m  ·  🍌 ' + numberFormat.format(rec.mostBananas)
+            : '';
+    }
+
+    function showRecords() {
+        const rec = Records.data;
+        dom.recBestDistance.textContent = numberFormat.format(rec.bestDistance) + ' m';
+        dom.recMostBananas.textContent = numberFormat.format(rec.mostBananas);
+        fillBoard(dom.recDistanceList, rec.distanceBoard, (v) => numberFormat.format(v) + ' m');
+        fillBoard(dom.recBananaList, rec.bananaBoard, (v) => '🍌 ' + numberFormat.format(v));
+        showScreen('records');
+    }
+
+    function fillBoard(list, board, format) {
+        list.textContent = '';
+        if (!board.length) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = 'No runs yet';
+            list.appendChild(li);
             return;
         }
+        for (const entry of board) {
+            const li = document.createElement('li');
+            const name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = entry.name;
+            const value = document.createElement('span');
+            value.className = 'value';
+            value.textContent = format(entry.value);
+            li.append(name, value);
+            list.appendChild(li);
+        }
+    }
 
-        // Handle DYING state and transition to GAMEOVER
-        if (gameState === 'DYING') {
-            speedMultiplier = Math.max(0.01, speedMultiplier * 0.98);
-            if (speedMultiplier < 0.02) {
-                 console.log("Dying sequence complete. Setting state to GAMEOVER.");
-                 gameState = 'GAMEOVER';
-                 handleGameOver(); // Trigger game over screen display
-                 return; // Stop the loop now
+    function setupButtons() {
+        dom.startBtn.addEventListener('click', startGame);
+        dom.recordsBtn.addEventListener('click', showRecords);
+        dom.recordsBackBtn.addEventListener('click', () => { refreshMenu(); showScreen('menu'); });
+        dom.pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        dom.pauseBtn.addEventListener('click', () => { blurActive(); togglePause(); });
+        dom.resumeBtn.addEventListener('click', resume);
+        dom.pauseMenuBtn.addEventListener('click', goToMenu);
+        dom.restartBtn.addEventListener('click', startGame);
+        dom.resultsMenuBtn.addEventListener('click', goToMenu);
+        dom.saveNameBtn.addEventListener('click', saveName);
+        dom.rotateAnywayBtn.addEventListener('click', () => {
+            portraitAccepted = true;
+            updateOrientationUI();
+        });
+        dom.updateBtn.addEventListener('click', () => window.location.reload());
+    }
+
+    // =====================================================================
+    // Orientation & fullscreen
+    // =====================================================================
+
+    const coarsePointer = window.matchMedia ? window.matchMedia('(pointer: coarse)') : { matches: false };
+
+    function isPortrait() { return window.innerHeight > window.innerWidth; }
+
+    // Only phones/tablets are asked to rotate; a narrow desktop window just plays letterboxed.
+    function needsRotate() {
+        const active = run.state === 'playing' || run.state === 'paused' || run.state === 'countdown';
+        return active && coarsePointer.matches && isPortrait() && !portraitAccepted;
+    }
+
+    function updateOrientationUI() {
+        const show = needsRotate();
+        dom.rotate.classList.toggle('hidden', !show);
+        if (show) {
+            pauseFor('rotate');
+        } else if (run.state === 'paused' && run.pauseReason === 'rotate') {
+            resume(); // rotated back: go straight into the 3-2-1 countdown
+        }
+    }
+
+    // Best effort: fullscreen + landscape lock where the platform allows it (Android Chrome,
+    // installed PWAs). iOS Safari supports neither, so the rotate prompt is the fallback.
+    function requestLandscape() {
+        if (!coarsePointer.matches) return;
+        const el = document.documentElement;
+        const standalone = window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches;
+        let fs = null;
+        try {
+            if (!standalone && !document.fullscreenElement) {
+                if (el.requestFullscreen) fs = el.requestFullscreen({ navigationUI: 'hide' });
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
             }
-        } else {
-            speedMultiplier = 1.0; // Ensure normal speed when PLAYING
-        }
-
-        // --- UPDATE ---
-        updatePlayer(speedMultiplier);
-        updateCycleAndFade(speedMultiplier);
-        updateItems(speedMultiplier);
-        updateEnemies(speedMultiplier);
-        updateClouds(speedMultiplier);
-
-        // --- DRAW ---
-        draw();
-
-        // --- CONTINUE LOOP ---
-        // Request next frame ONLY if still playing or dying
-        // This check prevents requesting frame when paused or menu
-        if (gameState === 'PLAYING' || gameState === 'DYING') {
-            animationFrameId = requestAnimationFrame(mainGameLoop);
-        }
-         // Removed the else if GAMEOVER here, handled by the DYING state transition
+        } catch { fs = null; }
+        const lock = () => {
+            try {
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('landscape').catch(() => { /* not allowed here */ });
+                }
+            } catch { /* unsupported */ }
+        };
+        if (fs && fs.then) fs.then(lock, lock); else lock();
     }
 
-
-    // --- 11. UPDATE SUB-FUNCTIONS ---
-    function updatePlayer(speedMod) {
-        // Skip update if player doesn't exist yet
-        if (!player || player.y === undefined) return;
-
-        player.velocityY += gravity * speedMod;
-        player.y += player.velocityY * speedMod;
-        if (player.velocityY < 0 && !isJumping) player.velocityY += 1.0;
-        // Check groundLevel before using it
-        if (groundLevel > 0 && player.y + player.height > groundLevel) {
-            player.y = groundLevel - player.height;
-            player.velocityY = 0;
-            player.isOnGround = true;
-        }
-    }
-    function updateCycleAndFade(speedMod) {
-         // Skip update if scenery doesn't exist yet or groundLevel isn't set
-        if (!scenery.sun || groundLevel <= 0) return;
-
-        const transitionStartY = groundLevel - scenery.sun.height, transitionEndY = groundLevel, speed = SUN_MOON_SPEED * speedMod;
-        switch (currentCycleState) {
-            case 'DAY':
-                scenery.sun.y += speed; scenery.moon.y = -200; nightOpacity = 0;
-                if (scenery.sun.y >= transitionStartY) currentCycleState = 'SUNSET';
-                break;
-            case 'SUNSET':
-                scenery.sun.y += speed;
-                nightOpacity = Math.min(1, Math.max(0, (scenery.sun.y - transitionStartY) / scenery.sun.height));
-                if (scenery.sun.y >= transitionEndY) { currentCycleState = 'NIGHT'; scenery.sun.y = -200; scenery.moon.y = 0 - scenery.moon.height; }
-                break;
-            case 'NIGHT':
-                scenery.moon.y += speed; scenery.sun.y = -200; nightOpacity = 1;
-                if (scenery.moon.y >= transitionStartY) currentCycleState = 'SUNRISE';
-                break;
-            case 'SUNRISE':
-                scenery.moon.y += speed;
-                nightOpacity = 1 - Math.min(1, Math.max(0, (scenery.moon.y - transitionStartY) / scenery.moon.height));
-                if (scenery.moon.y >= transitionEndY) { currentCycleState = 'DAY'; scenery.moon.y = -200; scenery.sun.y = 0 - scenery.sun.height; }
-                break;
-        }
-        dayOpacity = 1 - nightOpacity;
-    }
-    function updateClouds(speedMod) {
-        // Skip update if scenery doesn't exist yet
-        if (!scenery.clouds) return;
-        scenery.clouds.forEach(cloud => {
-            cloud.x -= CLOUD_SPEED * speedMod;
-            if (cloud.x + cloud.width < 0) { cloud.x = canvas.width; cloud.y = Math.random() * (canvas.height * 0.4); }
+    function setupViewportEvents() {
+        window.addEventListener('resize', resize);
+        window.addEventListener('orientationchange', () => setTimeout(resize, 50));
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) pauseFor('fullscreen');
+            resize();
         });
     }
-    function updateItems(speedMod) {
-        if (gameState === 'PLAYING') {
-            timeToNextBanana--;
-            if (timeToNextBanana <= 0) {
-                spawnBanana();
-                timeToNextBanana = 400 + (Math.random() * 100 - 50);
-            }
-        }
-        for (let i = items.length - 1; i >= 0; i--) {
-            const item = items[i];
-            item.x -= ITEM_SPEED * speedMod;
-            if (item.x + item.width < 0) {
-                 items.splice(i, 1);
-            } else if (checkCollision(player, item) && gameState === 'PLAYING') {
-                items.splice(i, 1);
-                score++;
-            }
-        }
-    }
-    function updateEnemies(speedMod) {
-        if (gameState === 'PLAYING') {
-            timeToNextEnemy--;
-            if (timeToNextEnemy <= 0) {
-                spawnEnemy();
-                timeToNextEnemy = 300 + (Math.random() * 100 - 50);
-            }
-        }
-        for (let i = enemies.length - 1; i >= 0; i--) {
-            const enemy = enemies[i];
-            enemy.x -= ENEMY_SPEED * speedMod;
-            if (enemy.x + enemy.width < 0) {
-                 enemies.splice(i, 1);
-            } else if (checkCollision(player, enemy) && gameState === 'PLAYING') {
-                startGameOverSequence();
-            }
-        }
-    }
-    function spawnBanana() {
-        const BANANA_WIDTH = 50, BANANA_HEIGHT = 50;
-        // Ensure groundLevel is valid before spawning
-        if (groundLevel <= 0 || player.height === undefined) return;
-        const maxJumpPeak = (groundLevel - player.height) - (Math.pow(jumpPower, 2) / (2 * gravity));
-        const lowZone_top = groundLevel - 150, lowZone_bottom = groundLevel - BANANA_HEIGHT - 20;
-        const highZone_top = maxJumpPeak + 20, highZone_bottom = groundLevel - 250;
-        let spawnY = 0;
-        if (lowZone_top >= lowZone_bottom) return; // Avoid invalid range
-        if (Math.random() < 0.5) {
-             spawnY = Math.random() * (lowZone_bottom - lowZone_top) + lowZone_top;
-        } else if (highZone_top < highZone_bottom) { // Check high zone validity
-             spawnY = Math.random() * (highZone_bottom - highZone_top) + highZone_top;
-        } else { // Fallback to low zone if high zone invalid
-             spawnY = Math.random() * (lowZone_bottom - lowZone_top) + lowZone_top;
-        }
-        // Ensure spawnY is a valid number and below ground
-        if (isNaN(spawnY) || spawnY > groundLevel - BANANA_HEIGHT) spawnY = lowZone_bottom - 10;
-        if (spawnY < maxJumpPeak) spawnY = maxJumpPeak; // Prevent spawning too high
 
-        items.push({ x: canvas.width, y: spawnY, width: BANANA_WIDTH, height: BANANA_HEIGHT, image: assets.banana });
+    // =====================================================================
+    // PWA
+    // =====================================================================
+
+    function registerServiceWorker() {
+        if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+        const hadController = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            // A new version took over. Never reload mid-run; offer it on the menu instead.
+            if (hadController) dom.updateBanner.classList.remove('hidden');
+        });
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => { /* offline or unsupported */ });
+        });
     }
-    function spawnEnemy() {
-        const TIGER_WIDTH = 55, TIGER_HEIGHT = 55, HAWK_WIDTH = 50, HAWK_HEIGHT = 50;
-        // Ensure groundLevel is valid before spawning
-        if (groundLevel <= 0) return;
-        let enemyType = (Math.random() < 0.5) ? 'tiger' : 'hawk';
-        if (enemyType === 'tiger') {
-            enemies.push({ x: canvas.width, y: groundLevel - TIGER_HEIGHT, width: TIGER_WIDTH, height: TIGER_HEIGHT, image: assets.tiger });
-        } else {
-            const minSpawnY = groundLevel - 200;
-            const maxSpawnY = groundLevel - HAWK_HEIGHT - 100;
-             // Ensure valid spawn range for hawk
-             if(minSpawnY >= maxSpawnY) {
-                 console.warn("Invalid hawk spawn range, defaulting Y.");
-                 enemies.push({ x: canvas.width, y: groundLevel - 150, width: HAWK_WIDTH, height: HAWK_HEIGHT, image: assets.hawk });
-             } else {
-                 const spawnY = Math.random() * (maxSpawnY - minSpawnY) + minSpawnY;
-                 enemies.push({ x: canvas.width, y: spawnY, width: HAWK_WIDTH, height: HAWK_HEIGHT, image: assets.hawk });
-             }
+
+    // =====================================================================
+    // Boot
+    // =====================================================================
+
+    function boot() {
+        dom.version.textContent = 'v' + CONFIG.VERSION;
+        Records.load();
+        refreshMenu();
+        setupButtons();
+        setupInput();
+        setupViewportEvents();
+        registerServiceWorker();
+        resize();
+        resetClouds();
+        loadAssets().then(() => {
+            assetsReady = true;
+            dom.startBtn.disabled = false;
+            dom.startBtn.textContent = 'Start';
+        });
+        if (/[?&]debug\b/.test(location.search)) {
+            window.HaRUNbeDebug = { run, view, sky, input, records: () => Records.data };
         }
     }
 
-    // --- 12. DRAW FUNCTION ---
-    function draw() {
-        // Ensure context is valid
-        if (!ctx) {
-             console.error("Canvas context not found during draw!");
-             return;
-        }
-        // Ensure dimensions are valid
-        if (canvas.width <= 0 || canvas.height <= 0) {
-             console.warn(`Invalid canvas dimensions (${canvas.width}x${canvas.height}) during draw. Skipping frame.`);
-             return;
-        }
-
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Backgrounds
-        ctx.globalAlpha = 1; if (assets.bgClearSky) ctx.drawImage(assets.bgClearSky, 0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = nightOpacity; if (assets.bgStarryNight) ctx.drawImage(assets.bgStarryNight, 0, 0, canvas.width, canvas.height);
-        // Sun & Moon (check if scenery exists)
-        ctx.globalAlpha = 1;
-        if (scenery.sun && assets.sun) ctx.drawImage(assets.sun, scenery.sun.x, scenery.sun.y, scenery.sun.width, scenery.sun.height);
-        if (scenery.moon && assets.moon) ctx.drawImage(assets.moon, scenery.moon.x, scenery.moon.y, scenery.moon.width, scenery.moon.height);
-        // Clouds (check if scenery exists)
-        if (scenery.clouds) {
-             scenery.clouds.forEach(cloud => {
-                 if (assets.cloudDay) { ctx.globalAlpha = dayOpacity; ctx.drawImage(assets.cloudDay, cloud.x, cloud.y, cloud.width, cloud.height); }
-                 if (assets.cloudNight) { ctx.globalAlpha = nightOpacity; ctx.drawImage(assets.cloudNight, cloud.x, cloud.y, cloud.width, cloud.height); }
-             });
-        }
-        // Items (check if image exists on item)
-        ctx.globalAlpha = 1; if (assets.banana) items.forEach(item => { if(item.image) ctx.drawImage(item.image, item.x, item.y, item.width, item.height); });
-        // Enemies (check if image exists on enemy)
-        ctx.globalAlpha = 1; enemies.forEach(enemy => { if(enemy.image) ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height); });
-        // Player (check if player and image exist)
-        ctx.globalAlpha = 1; if (assets.playerImage && player && player.x !== undefined) ctx.drawImage(assets.playerImage, player.x, player.y, player.width, player.height);
-        // Wasted Overlay
-        if (gameState === 'DYING') { const overlayAlpha = 0.8 * (1 - speedMultiplier); ctx.globalAlpha = overlayAlpha; ctx.fillStyle = '#444'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1 - speedMultiplier; ctx.fillStyle = 'red'; ctx.font = '80px Arial'; ctx.textAlign = 'center'; ctx.fillText('WASTED', canvas.width / 2, canvas.height / 2); }
-        // Score Display
-        if (gameState === 'PLAYING') { ctx.globalAlpha = 1; ctx.fillStyle = 'yellow'; ctx.font = '30px Arial'; ctx.textAlign = 'right'; ctx.fillText('Bananas: ' + score, canvas.width - 20, 40); }
-    }
-
-
-    // --- 13. EVENT LISTENERS & INITIAL CALL ---
-    grass.addEventListener('mousedown', () => { isJumping = true; jump(); });
-    grass.addEventListener('touchstart', (e) => { e.preventDefault(); isJumping = true; jump(); });
-    grass.addEventListener('mouseup', () => { isJumping = false; });
-    grass.addEventListener('touchend', (e) => { e.preventDefault(); isJumping = false; });
-    grass.addEventListener('mouseleave', () => { isJumping = false; });
-    document.addEventListener('keydown', e => { if (e.code === 'Space') jump(); else if (e.code === 'KeyP') togglePause(); });
-    window.addEventListener('resize', resizeCanvas);
-    loadAllAssets(init); // Kick off the app
-});
+    boot();
+})();
