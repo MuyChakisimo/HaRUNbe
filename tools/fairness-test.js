@@ -74,7 +74,7 @@ for (const s of speeds) {
         const bStart = aEnd + E.minGap(s);
         const b = B.build(bStart, rng, s);
         const shift = bStart - Math.min(...E.hitboxes(b).map(h => h.x0));
-        const boxesB = E.hitboxes(b).map(h => ({ x0: h.x0 + shift, x1: h.x1 + shift, y0: h.y0, y1: h.y1 }));
+        const boxesB = E.hitboxes(b).map(h => Object.assign({}, h, { x0: h.x0 + shift, x1: h.x1 + shift })) // keeps any motion;
         const solsA = E.bestWindow(boxesA, s).traj === null ? [{ land: -Infinity }] : solutions(boxesA, s);
         // Latest landing from any way of clearing A:
         let worstLand = -Infinity;
@@ -127,7 +127,8 @@ for (const seed of [1, 2, 3, 4, 5]) {
     for (const bnn of bananas) {
         const alt = CONFIG.GROUND_Y - (bnn.hit.y0 + bnn.hit.y1) / 2;
         if (alt < 0 || alt > E.MAX_APEX + E.PLAYER_HITBOX.PH_TOP) bad++;
-        for (const o of obs) if (E.overlaps(bnn.hit, o.hit)) bad++;
+        // Against the whole range a moving enemy sweeps through, not just its start position.
+        for (const o of obs) if (E.overlaps(bnn.hit, { x0: o.hit.x0, x1: o.hit.x1, y0: o.hit.sy0, y1: o.hit.sy1 })) bad++;
         if (bnn.hit.y1 > CONFIG.GROUND_Y) bad++;
     }
     for (const t of obs) if (t.type === 'tiger' && Math.abs(t.hit.y1 - (CONFIG.GROUND_Y - 2.4)) > 1) bad++;

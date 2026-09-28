@@ -624,6 +624,7 @@
 
     const playerBox = E.makeBox();
     const collectBox = E.makeBox();
+    const enemyBox = E.makeBox();
 
     function checkCollisions() {
         E.playerBox(run.player.alt, run.trackPos, playerBox);
@@ -641,7 +642,7 @@
                     run.bananas++;
                     spawnPopup(e.x - run.trackPos + e.size / 2, e.top);
                 }
-            } else if (E.overlaps(playerBox, e.hit)) {
+            } else if (E.overlaps(playerBox, e.hit.mv ? E.obstacleBox(e.hit, run.trackPos, enemyBox) : e.hit)) {
                 die();
                 return;
             }
@@ -928,6 +929,8 @@
             if (x > maxX || x + e.size < -10 || e.collected) continue;
             if (e.type === 'banana') {
                 drawSprite(img.banana, x, e.top + Math.sin(t * 4 + e.phase) * 3, e.size, '#ffe135');
+            } else if (e.hit.mv) {
+                drawMover(e, x, trackPos, t);
             } else if (e.type === 'tiger') {
                 // Bounding gait: purely cosmetic, the hitbox stays put.
                 const bob = -Math.abs(Math.sin(t * 11 + e.phase)) * 4;
@@ -942,6 +945,87 @@
                 ctx.restore();
             }
         }
+    }
+
+    // Moving enemies. The sprite is drawn exactly where its hitbox is; the squash, tilt,
+    // shadow and arrow are warning signs so the player can read what it is about to do.
+    function drawMover(e, x, trackPos, t) {
+        const mv = e.hit.mv;
+        const s = e.size;
+        const off = E.obstacleOffset(e.hit, trackPos);
+        const ahead = E.obstacleOffset(e.hit, trackPos + 12);
+        const feetY = e.top + s * SPRITES[e.type].feet; // ground contact line (tigers)
+
+        if (e.type === 'tiger') {
+            let sx = 1, sy = 1, rot = 0, wiggle = 0;
+            if (mv.kind === 'hop') {
+                const air = clamp(-off / mv.h, 0, 1);
+                sy = air < 0.15 ? 0.86 + air : 1.04;     // squash on landing, stretch in the air
+                sx = 2 - sy;
+            } else {
+                const dd = e.hit.x0 - (trackPos + E.PLAYER_HITBOX.PHX1);
+                if (dd > mv.start) {                      // crouched and wiggling: about to pounce
+                    sy = 0.8; sx = 1.1;
+                    wiggle = Math.sin(t * 22 + e.phase) * 2.5;
+                } else if (off < -1) {                    // mid-leap: nose up, then down
+                    rot = clamp(-(ahead - off) * 0.05, -0.45, 0.45);
+                    sy = 1.08; sx = 0.94;
+                }
+            }
+            drawShadow(x + s / 2, s * 0.55, off);
+            ctx.save();
+            ctx.translate(x + s / 2 + wiggle, feetY + off);
+            ctx.rotate(rot);
+            ctx.scale(sx, sy);
+            drawSprite(img.tiger, -s / 2, -s * SPRITES.tiger.feet, s, '#f39c12');
+            ctx.restore();
+            return;
+        }
+
+        // Gliding hawk: tilts toward where it is heading; an arrow shows the direction.
+        const heading = mv.shift > 0 ? 1 : -1;            // 1 = diving, -1 = rising
+        const moving = Math.abs(ahead - off) > 0.05;
+        const done = Math.abs(off - mv.shift) < 0.5;
+        const rot = moving ? clamp(-(ahead - off) * 0.04, -0.5, 0.5) : Math.sin(t * 6 + e.phase + 1) * 0.06;
+        const cy = e.top + s / 2 + off + (moving ? 0 : Math.sin(t * 6 + e.phase) * 3);
+        drawShadow(x + s / 2, s * 0.5, (e.hit.y1 + off) - GROUND_Y);
+        ctx.save();
+        ctx.translate(x + s / 2, cy);
+        ctx.rotate(rot);
+        drawSprite(img.hawk, -s / 2, -s / 2, s, '#7b4a2a');
+        ctx.restore();
+        if (!done) drawArrow(x + s / 2, heading > 0 ? cy + s * 0.55 : cy - s * 0.55, heading, t);
+    }
+
+    // Soft shadow on the ground; smaller and fainter the higher the enemy is (`off` < 0 = up).
+    function drawShadow(cx, w, off) {
+        const k = clamp(1 + off / 160, 0.35, 1);
+        ctx.globalAlpha = 0.28 * k;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(cx, GROUND_Y + 3, w * k * 0.5, 5 * k, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    // Pulsing chevron pointing down (dir = 1) or up (dir = -1).
+    function drawArrow(cx, cy, dir, t) {
+        const a = 0.8 + 0.2 * Math.sin(t * 10);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#ffe135';
+        ctx.strokeStyle = 'rgba(60,40,0,0.9)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx - 11, cy - 6 * dir);
+        ctx.lineTo(cx, cy + 6 * dir);
+        ctx.lineTo(cx + 11, cy - 6 * dir);
+        ctx.lineTo(cx + 11, cy - 12 * dir);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx - 11, cy - 12 * dir);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fill();
+        ctx.globalAlpha = 1;
     }
 
     function drawPlayer(alt) {

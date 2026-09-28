@@ -85,6 +85,13 @@
   | tiger trio | 1,400 m | full jump |
   | tiger, low hawk, tiger | 1,800 m | full jump |
   | four tigers | 2,400 m | perfectly timed full jump |
+  | hopper (bouncing tiger) | 600 m | time the jump to its bounce |
+  | diver (hawk swoops high → low) | 800 m | watch it drop, then hop |
+  | riser (hawk climbs low → high) | 1,000 m | don't jump |
+  | pouncer (crouching tiger leaps) | 1,200 m | don't jump; run under it |
+  | tiger then pouncer | 1,800 m | hop the tiger, then stay down |
+
+  Moving enemies are keyed to the player's distance, never the clock, so each one always behaves the same way and the fairness checker replays its exact path (`motionOffset` in engine.js). Warning signs: the pouncer crouches and wiggles, hoppers bounce in a steady rhythm, and gliding hawks show a ▼/▲ arrow and a ground shadow.
 
   Each pattern has a `weight` (how common it is at the start of a run) and a `lateWeight` (how common far into a run). Single enemies give way to big groups as the run goes on.
 - **Crowding.** `CONFIG.spawn` sets how fast the world fills up (`rampMeters`, faster than the speed ramp) and the random extra spacing between groups. `node tools/density-report.js` prints the resulting enemies per second at each stage of a run (about 0.5/s at the start and 1.4/s after three minutes).

@@ -15,7 +15,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.2.0',
+        VERSION: '3.3.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -184,22 +184,85 @@
     }
 
     // Entities live in track space. `top` is the sprite's top y; `hit` is its hitbox.
+    // A moving enemy's `hit` also carries `mv` (its motion) and sy0/sy1: the full vertical
+    // range it sweeps through, used to keep bananas clear of it.
     function makeEntity(type, x, top) {
         const def = SPRITES[type];
         const s = def.size;
+        const y0 = top + def.hit[1] * s, y1 = top + def.hit[3] * s;
         return {
             type,
             x,
             top,
             size: s,
             phase: Math.random() * Math.PI * 2, // cosmetic animation offset
-            hit: {
-                x0: x + def.hit[0] * s,
-                x1: x + def.hit[2] * s,
-                y0: top + def.hit[1] * s,
-                y1: top + def.hit[3] * s
-            }
+            hit: { x0: x + def.hit[0] * s, x1: x + def.hit[2] * s, y0, y1, sy0: y0, sy1: y1, mv: null }
         };
+    }
+
+    // ---------------------------------------------------------------- moving enemies
+
+    /*
+     * A moving enemy's motion is keyed to `dd`, the distance from the front of the player's
+     * hitbox to the front of the enemy's hitbox (track units; 0 = touching). It never depends
+     * on the clock, so a given enemy always does exactly the same thing as the player
+     * approaches, and the fairness checker can replay it precisely. Returns the vertical
+     * offset of the enemy from its base position (negative = up).
+     *
+     *   hop:    bounces in a steady rhythm            { h, period, phase }
+     *   pounce: crouches, then leaps once when close   { h, start, span }
+     *   glide:  moves from one height to another       { shift, far, near }
+     */
+    function motionOffset(mv, dd) {
+        if (mv.kind === 'hop') return -mv.h * Math.abs(Math.sin(Math.PI * dd / mv.period + mv.phase));
+        if (mv.kind === 'pounce') {
+            const u = (mv.start - dd) / mv.span;
+            return u > 0 && u < 1 ? -mv.h * 4 * u * (1 - u) : 0;
+        }
+        if (mv.kind === 'glide') {
+            const t = clamp((mv.far - dd) / (mv.far - mv.near), 0, 1);
+            return mv.shift * t * t * (3 - 2 * t);
+        }
+        return 0;
+    }
+
+    function obstacleOffset(ob, trackPos) {
+        return ob.mv ? motionOffset(ob.mv, ob.x0 - (trackPos + PHX1)) : 0;
+    }
+
+    // The obstacle's hitbox where it is when the camera is at `trackPos`.
+    function obstacleBox(ob, trackPos, out) {
+        const o = obstacleOffset(ob, trackPos);
+        out.x0 = ob.x0; out.x1 = ob.x1;
+        out.y0 = ob.y0 + o; out.y1 = ob.y1 + o;
+        return out;
+    }
+
+    function setMotion(e, mv, sweepUp, sweepDown) {
+        e.hit.mv = mv;
+        e.hit.sy0 = e.hit.y0 - sweepUp;
+        e.hit.sy1 = e.hit.y1 + sweepDown;
+        return e;
+    }
+
+    // Tiger that bounces up to `h` units, once every `period` track units.
+    function makeHopper(x, h, period, phase) {
+        return setMotion(makeTiger(x), { kind: 'hop', h, period, phase }, h, 0);
+    }
+
+    // Crouching tiger that leaps `h` units high, starting when the player is `start` units away.
+    function makePouncer(x, h, start, span) {
+        return setMotion(makeTiger(x), { kind: 'pounce', h, start, span }, h, 0);
+    }
+
+    // Hawk that glides from `altFar` to `altNear` (hitbox-bottom altitudes) as the player
+    // approaches. The move starts ~1 s away and finishes ~0.45 s away, while on screen.
+    function makeGlider(x, altFar, altNear, s) {
+        const far = Math.min(s * 1.0, 520);
+        const near = Math.min(s * 0.45, 340);
+        const shift = altFar - altNear; // + = moves down
+        return setMotion(makeHawk(x, altFar), { kind: 'glide', shift, far, near },
+            Math.max(0, -shift), Math.max(0, shift));
     }
 
     function makeTiger(x) {
@@ -258,6 +321,21 @@
     }
 
     const scratchBox = makeBox();
+    const scratchOb = makeBox();
+
+    // Does a player running on the ground, while the camera moves from ta to tb, touch `ob`?
+    // Moving obstacles are checked step by step (every `dx` track units).
+    function groundHits(ob, ta, tb, dx) {
+        if (!ob.mv) return standsIn(ob) && ob.x0 < tb + PHX1 && ob.x1 > ta + PHX0;
+        const lo = Math.max(ta, ob.x0 - PHX1), hi = Math.min(tb, ob.x1 - PHX0);
+        if (lo > hi) return false;
+        const n = Math.max(1, Math.ceil((hi - lo) / dx));
+        for (let i = 0; i <= n; i++) {
+            const o = obstacleOffset(ob, lo + (hi - lo) * (i / n));
+            if (ob.y1 + o > G - PH_TOP && ob.y0 + o < G - PH_BOTTOM) return true;
+        }
+        return false;
+    }
 
     /*
      * Simulate: run on the ground, press when trackPos = px, follow trajectory `traj`,
@@ -272,12 +350,10 @@
 
         // Ground run before the press.
         if (preGround > 0) {
-            const lo = px - preGround + PHX0, hi = px + PHX1;
             for (let j = 0; j < obstacles.length; j++) {
-                const ob = obstacles[j];
-                if (standsIn(ob) && ob.x0 < hi && ob.x1 > lo) return 0;
+                if (groundHits(obstacles[j], px - preGround, px, dx)) return 0;
             }
-            if (target && standsIn(target) && target.x0 < hi && target.x1 > lo) hitTarget = true;
+            if (target && groundHits(target, px - preGround, px, dx)) hitTarget = true;
         }
 
         // Airborne: for each obstacle, only test the steps where it overlaps horizontally.
@@ -289,12 +365,10 @@
         // Ground run after landing.
         const T = px + dx * traj.steps;
         if (postGround > 0) {
-            const lo = T + PHX0, hi = T + PHX1 + postGround;
             for (let j = 0; j < obstacles.length; j++) {
-                const ob = obstacles[j];
-                if (standsIn(ob) && ob.x0 < hi && ob.x1 > lo) return 0;
+                if (groundHits(obstacles[j], T, T + postGround, dx)) return 0;
             }
-            if (target && standsIn(target) && target.x0 < hi && target.x1 > lo) hitTarget = true;
+            if (target && groundHits(target, T, T + postGround, dx)) hitTarget = true;
         }
         return hitTarget ? 2 : 1;
     }
@@ -304,14 +378,15 @@
         const i1 = Math.min(traj.steps, Math.ceil((ob.x1 - PHX0 - px) / dx) + 1);
         const box = scratchBox;
         for (let i = i0; i < i1; i++) {
-            playerBox(traj.alts[i], px + dx * (i + 1), box);
-            if (overlaps(box, ob)) return true;
+            const T = px + dx * (i + 1);
+            playerBox(traj.alts[i], T, box);
+            if (overlaps(box, ob.mv ? obstacleBox(ob, T, scratchOb) : ob)) return true;
         }
         return false;
     }
 
-    function groundRunClear(obstacles) {
-        for (const ob of obstacles) if (standsIn(ob)) return false;
+    function groundRunClear(obstacles, s) {
+        for (const ob of obstacles) if (groundHits(ob, -Infinity, Infinity, s * CONFIG.STEP)) return false;
         return true;
     }
 
@@ -333,10 +408,10 @@
         else for (const ob of obstacles) { lo = Math.min(lo, ob.x0); hi = Math.max(hi, ob.x1); }
 
         // Running without jumping.
-        if (!target && groundRunClear(obstacles)) {
+        if (!target && groundRunClear(obstacles, s)) {
             return { seconds: Infinity, traj: null, pxStart: -Infinity, pxEnd: Infinity };
         }
-        if (target && standsIn(target) && pre === Infinity && post === Infinity && groundRunClear(obstacles)) {
+        if (target && standsIn(target) && pre === Infinity && post === Infinity && groundRunClear(obstacles, s)) {
             return { seconds: Infinity, traj: null, pxStart: -Infinity, pxEnd: Infinity };
         }
 
@@ -393,13 +468,13 @@
     // of a run, `lateWeight` = relative frequency far into a run (it shifts gradually with the
     // spawn ramp), so single enemies give way to bigger groups as the run goes on.
     const PATTERNS = [
-        { name: 'tiger', from: 0, weight: 10, lateWeight: 3,
+        { name: 'tiger', from: 0, weight: 10, lateWeight: 1.5,
             build: (x) => [makeTiger(x)] },
-        { name: 'hawkHigh', from: 80, weight: 4, lateWeight: 2,     // stay on the ground and let it pass
+        { name: 'hawkHigh', from: 80, weight: 4, lateWeight: 1,     // stay on the ground and let it pass
             build: (x, r) => [makeHawk(x, lerp(100, 116, r()))] },
-        { name: 'hawkLow', from: 180, weight: 4, lateWeight: 2,     // a short hop clears it
+        { name: 'hawkLow', from: 180, weight: 4, lateWeight: 1,     // a short hop clears it
             build: (x, r) => [makeHawk(x, lerp(12, 24, r()))] },
-        { name: 'hawkMid', from: 350, weight: 3, lateWeight: 2,     // needs a held (higher) jump
+        { name: 'hawkMid', from: 350, weight: 3, lateWeight: 1,     // needs a held (higher) jump
             build: (x, r) => [makeHawk(x, lerp(44, 58, r()))] },
         { name: 'tigerPair', from: 500, weight: 3, lateWeight: 5,   // two tigers: hold a little longer
             build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 84, r()))] },
@@ -414,7 +489,19 @@
         { name: 'tigerHawkTiger', from: 1800, weight: 1, lateWeight: 3, // tiger, low hawk, tiger: full jump
             build: (x, r) => [makeTiger(x), makeHawk(x + lerp(66, 74, r()), lerp(14, 22, r())), makeTiger(x + lerp(136, 146, r()))] },
         { name: 'tigerQuad', from: 2400, weight: 1, lateWeight: 3,  // four tigers: a perfectly timed full jump
-            build: (x, r) => [makeTiger(x), makeTiger(x + lerp(60, 66, r())), makeTiger(x + lerp(122, 130, r())), makeTiger(x + lerp(184, 194, r()))] }
+            build: (x, r) => [makeTiger(x), makeTiger(x + lerp(60, 66, r())), makeTiger(x + lerp(122, 130, r())), makeTiger(x + lerp(184, 194, r()))] },
+
+        // Moving enemies (see motionOffset). `s` is the running speed where the pattern spawns.
+        { name: 'hopper', from: 600, weight: 2, lateWeight: 3,     // bouncing tiger: time the jump to its rhythm
+            build: (x, r, s) => [makeHopper(x, lerp(44, 66, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI)] },
+        { name: 'diver', from: 800, weight: 2, lateWeight: 3,      // hawk swoops from high to low: hop it
+            build: (x, r, s) => [makeGlider(x, lerp(102, 116, r()), lerp(14, 24, r()), s)] },
+        { name: 'riser', from: 1000, weight: 2, lateWeight: 3,     // hawk climbs from low to high: don't jump
+            build: (x, r, s) => [makeGlider(x, lerp(14, 22, r()), lerp(104, 116, r()), s)] },
+        { name: 'pouncer', from: 1200, weight: 2, lateWeight: 3,   // crouching tiger leaps as you arrive: run under it
+            build: (x, r, s) => [makePouncer(x, lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] },
+        { name: 'tigerThenPouncer', from: 1800, weight: 1, lateWeight: 2, // hop the tiger, then stay down
+            build: (x, r, s) => [makeTiger(x), makePouncer(x + lerp(200, 240, r()), lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] }
     ];
 
     // Minimum ground distance between clusters: enough to land from any jump that cleared the
@@ -471,7 +558,7 @@
         let obstacles = null, win = null;
         for (let attempt = 0; attempt < 4 && !obstacles; attempt++) {
             const pattern = attempt < 3 ? pickPattern(gen, meters, crowd) : PATTERNS[0];
-            const list = pattern.build(x, r);
+            const list = pattern.build(x, r, s);
             const w = bestWindow(hitboxes(list), s, { enough: CONFIG.fairness.minWindow, pressStep: 1 / 120 });
             if (w && w.seconds >= CONFIG.fairness.minWindow) { obstacles = list; win = w; }
         }
@@ -551,10 +638,12 @@
         }
     }
 
+    // Uses the full range a moving enemy sweeps through, so a banana never sits in its path.
     function clearOf(box, others, margin) {
         for (const o of others) {
+            const y0 = o.sy0 === undefined ? o.y0 : o.sy0, y1 = o.sy1 === undefined ? o.y1 : o.sy1;
             if (box.x0 < o.x1 + margin && box.x1 > o.x0 - margin &&
-                box.y0 < o.y1 + margin && box.y1 > o.y0 - margin) return false;
+                box.y0 < y1 + margin && box.y1 > y0 - margin) return false;
         }
         return true;
     }
@@ -573,7 +662,8 @@
         difficultyFor, speedFor, crowdingFor,
         createPlayer, pressJump, stepPlayer,
         makeBox, playerBox, overlaps,
-        makeTiger, makeHawk, makeBanana,
+        makeTiger, makeHawk, makeBanana, makeHopper, makePouncer, makeGlider,
+        obstacleOffset, obstacleBox,
         createGenerator, generateSegment, generateUntil,
         bestWindow, simulateJump, hitboxes, minGap,
         PATTERNS, TRAJECTORIES, MAX_AIR, MIN_APEX, MAX_APEX,
