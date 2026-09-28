@@ -7,7 +7,7 @@
  * - Images are cache-first (they rarely change and are the bulk of the download).
  * - Bump VERSION whenever any file changes; old caches are deleted on activation.
  */
-const VERSION = '3.4.0';
+const VERSION = '3.5.0';
 const CACHE = 'harunbe-' + VERSION;
 
 importScripts('./skins.js'); // skin images are precached straight from the catalog
@@ -18,6 +18,7 @@ const CORE = [
     './style.css',
     './engine.js',
     './skins.js',
+    './powerups.js',
     './game.js',
     './manifest.json'
 ];

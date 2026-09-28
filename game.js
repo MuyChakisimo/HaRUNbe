@@ -9,6 +9,7 @@
     const { CONFIG, SPRITES, clamp, lerp } = E;
     const GROUND_Y = CONFIG.GROUND_Y;
     const SKINS = window.HarunbeSkins;
+    const POWER = window.HarunbePowerups;
 
     // =====================================================================
     // DOM
@@ -30,6 +31,8 @@
         skinsPageText: $('skins-page'),
         skinsPrev: $('skins-prev'),
         skinsNext: $('skins-next'),
+        shopTabs: document.querySelectorAll('.shop-tab'),
+        powerBar: $('power-bar'),
         resWallet: $('res-wallet'),
         resUnlocks: $('res-unlocks'),
         menuBest: $('menu-best'),
@@ -194,7 +197,7 @@
     })();
 
     // =====================================================================
-    // Progress: banked bananas, lifetime distance, owned skins (localStorage)
+    // Progress: banked bananas, lifetime distance, owned skins and power-ups (localStorage)
     // =====================================================================
 
     const Progress = (function () {
@@ -202,7 +205,7 @@
         let data = blank();
 
         function blank() {
-            return { version: 1, bananas: 0, totalMeters: 0, owned: [], selected: SKINS[0].id };
+            return { version: 1, bananas: 0, totalMeters: 0, owned: [], selected: SKINS[0].id, powerups: {} };
         }
 
         function count(v) { return Math.max(0, Math.floor(Number(v) || 0)); }
@@ -216,6 +219,9 @@
                 data.totalMeters = count(stored.totalMeters);
                 if (Array.isArray(stored.owned)) data.owned = stored.owned.filter((id) => typeof id === 'string');
                 if (typeof stored.selected === 'string') data.selected = stored.selected;
+                if (stored.powerups && typeof stored.powerups === 'object') {
+                    for (const p of POWER.list) data.powerups[p.id] = Math.min(POWER.max, count(stored.powerups[p.id]));
+                }
             }
             if (!owns(skinById(data.selected))) data.selected = SKINS[0].id;
         }
@@ -257,7 +263,31 @@
             save();
         }
 
-        return { load, owns, requirementsMet, canBuy, buy, select, bank, get data() { return data; } };
+        // Power-ups: stored up to POWER.max of each; one is removed from storage when used.
+        function powerCount(p) { return data.powerups[p.id] || 0; }
+
+        function canBuyPower(p) { return powerCount(p) < POWER.max && data.bananas >= p.price; }
+
+        function buyPower(p) {
+            if (!canBuyPower(p)) return false;
+            data.bananas -= p.price;
+            data.powerups[p.id] = powerCount(p) + 1;
+            save();
+            return true;
+        }
+
+        function usePower(p) {
+            if (powerCount(p) <= 0) return false;
+            data.powerups[p.id] = powerCount(p) - 1;
+            save();
+            return true;
+        }
+
+        return {
+            load, owns, requirementsMet, canBuy, buy, select, bank,
+            powerCount, canBuyPower, buyPower, usePower,
+            get data() { return data; }
+        };
     })();
 
     function skinById(id) {
@@ -401,12 +431,13 @@
         countdown: 0,
         pauseReason: '',
         result: null,
-        banked: true          // this run's bananas/distance were added to Progress
+        banked: true,         // this run's bananas/distance were added to Progress
+        pw: null              // power-ups in this run (see resetPowers)
     };
 
     const clouds = [];
     const popups = []; // "+1" banana pop-ups, reused
-    for (let i = 0; i < 8; i++) popups.push({ life: 0, x: 0, y: 0 });
+    for (let i = 0; i < 8; i++) popups.push({ life: 0, x: 0, y: 0, text: '+1' });
 
     function resetRun() {
         run.trackPos = run.prevTrackPos = 0;
@@ -424,6 +455,7 @@
         run.result = null;
         run.banked = false;
         run.pauseReason = '';
+        resetPowers();
         for (const p of popups) p.life = 0;
         resetClouds();
         input.reset();
@@ -501,6 +533,10 @@
                 if (e.repeat || run.state !== 'playing') return;
                 input.keys.add(e.code);
                 press();
+            } else if (POWER_KEYS[e.code]) {
+                if (run.state !== 'playing' || e.repeat) return;
+                e.preventDefault();
+                activatePower(POWER_KEYS[e.code]);
             } else if (e.code === 'KeyP' || e.code === 'Escape') {
                 if (!inGame || e.repeat) return;
                 e.preventDefault();
@@ -604,6 +640,7 @@
         E.stepPlayer(run.player, input.held, dt);
         updateClouds(dt, s);
         updatePopups(dt);
+        stepPowers(dt);
         checkCollisions();
     }
 
@@ -639,10 +676,12 @@
             if (e.type === 'banana') {
                 if (E.overlaps(collectBox, e.hit)) {
                     e.collected = true;
-                    run.bananas++;
-                    spawnPopup(e.x - run.trackPos + e.size / 2, e.top);
+                    const n = run.pw.double > 0 ? 2 : 1;
+                    run.bananas += n;
+                    spawnPopup(e.x - run.trackPos + e.size / 2, e.top, '+' + n);
                 }
-            } else if (E.overlaps(playerBox, e.hit.mv ? E.obstacleBox(e.hit, run.trackPos, enemyBox) : e.hit)) {
+            } else if (!e.harmless && E.overlaps(playerBox, e.hit.mv ? E.obstacleBox(e.hit, run.trackPos, enemyBox) : e.hit)) {
+                if (run.pw.shield) { breakShield(e); continue; }
                 die();
                 return;
             }
@@ -671,10 +710,186 @@
         }
     }
 
-    function spawnPopup(x, y) {
+    function spawnPopup(x, y, text) {
         let p = popups[0];
         for (const q of popups) if (q.life <= 0) { p = q; break; }
-        p.life = 0.7; p.x = x; p.y = y;
+        p.life = 0.7; p.x = x; p.y = y; p.text = text || '+1';
+    }
+
+    // =====================================================================
+    // Power-ups (catalog in powerups.js). Each can be used once per run, by its
+    // button or key; one is taken from storage only when it is actually used.
+    // =====================================================================
+
+    const POWER_KEYS = {};
+    for (const p of POWER.list) { POWER_KEYS['Digit' + p.key] = p; POWER_KEYS['Numpad' + p.key] = p; }
+    const WARP_FX = 0.9;       // seconds of head-start animation
+    const SHIELD_BLINK = 0.9;  // seconds the gorilla blinks after the shield breaks
+
+    function resetPowers() {
+        run.pw = {
+            used: {},          // effect -> true once used this run (one of each per run)
+            shield: false,
+            blink: 0,
+            magnet: 0, magnetMax: 1,
+            double: 0, doubleMax: 1,
+            warpFx: 0, warpFrom: 0
+        };
+        buildPowerBar();
+    }
+
+    function powerAvailable(p) {
+        if (run.pw.used[p.effect] || Progress.powerCount(p) <= 0) return false;
+        return p.effect !== 'warp' || meters() < POWER.warpWindow;
+    }
+
+    function powerActive(p) {
+        const pw = run.pw;
+        if (p.effect === 'shield') return pw.shield;
+        if (p.effect === 'magnet') return pw.magnet > 0;
+        if (p.effect === 'double') return pw.double > 0;
+        return false;
+    }
+
+    function activatePower(p) {
+        if (run.state !== 'playing' || !powerAvailable(p) || !Progress.usePower(p)) return;
+        const pw = run.pw;
+        pw.used[p.effect] = true;
+        if (p.effect === 'shield') pw.shield = true;
+        else if (p.effect === 'magnet') pw.magnet = pw.magnetMax = p.seconds;
+        else if (p.effect === 'double') pw.double = pw.doubleMax = p.seconds;
+        else if (p.effect === 'warp') warp(p.meters);
+        buildPowerBar();
+    }
+
+    // Head start: jump ahead, skipping that stretch of world (and its bananas). The run then
+    // continues at the speed and difficulty of the new distance, after a clear runway.
+    function warp(metersAhead) {
+        const pw = run.pw;
+        pw.warpFrom = meters();
+        pw.warpFx = WARP_FX;
+        const d = metersAhead * CONFIG.UNITS_PER_METER;
+        run.trackPos += d;
+        run.prevTrackPos = run.trackPos;
+        run.distance += d;
+        run.entities.length = 0;
+        const gen = run.gen;
+        gen.cursor = run.trackPos + CONFIG.PLAYER_X + E.speedFor(run.distance) * 2.2 + 300;
+        gen.prevObstacles = [];
+        gen.prevEnd = run.trackPos + CONFIG.PLAYER_X + 300;
+        E.generateUntil(gen, run.trackPos + view.w + CONFIG.aheadUnits, run.entities);
+    }
+
+    // The shield absorbs the hit: the enemy group that caused it can't hurt the player any
+    // more (the next group is always at least a jump and a reaction time away).
+    function breakShield(hitEnemy) {
+        const pw = run.pw;
+        pw.shield = false;
+        pw.blink = SHIELD_BLINK;
+        for (const e of run.entities) {
+            if (e.type !== 'banana' && e.x > hitEnemy.x - 250 && e.x < hitEnemy.x + 400) e.harmless = true;
+        }
+        if (navigator.vibrate) { try { navigator.vibrate(60); } catch { /* unsupported */ } }
+        buildPowerBar();
+    }
+
+    function stepPowers(dt) {
+        const pw = run.pw;
+        if (pw.blink > 0) pw.blink = Math.max(0, pw.blink - dt);
+        if (pw.warpFx > 0) pw.warpFx = Math.max(0, pw.warpFx - dt);
+        if (pw.double > 0) pw.double = Math.max(0, pw.double - dt);
+        if (pw.magnet > 0) {
+            pw.magnet = Math.max(0, pw.magnet - dt);
+            pullBananas(dt);
+        }
+    }
+
+    // Magnet: bananas ahead of (and just behind) the gorilla fly toward it.
+    function pullBananas(dt) {
+        const size = SPRITES.gorilla.size;
+        const px = run.trackPos + CONFIG.PLAYER_X + size / 2;
+        const py = GROUND_Y - run.player.alt - size * 0.45;
+        const k = 1 - Math.exp(-9 * dt);
+        for (const e of run.entities) {
+            if (e.type !== 'banana' || e.collected) continue;
+            const cx = e.x + e.size / 2, cy = e.top + e.size / 2;
+            const ahead = cx - px;
+            if (ahead < -60 || ahead > 430) continue;
+            const mx = (px - cx) * k, my = (py - cy) * k;
+            e.x += mx; e.top += my;
+            e.hit.x0 += mx; e.hit.x1 += mx; e.hit.y0 += my; e.hit.y1 += my;
+        }
+    }
+
+    // Buttons along the bottom of the screen: one per power-up the player can use now,
+    // plus the ones currently running (with a timer ring).
+    const powerBarState = { warpShown: false, sig: '' };
+
+    function buildPowerBar() {
+        const bar = dom.powerBar;
+        bar.textContent = '';
+        for (const p of POWER.list) {
+            const inUse = run.pw.used[p.effect] && powerActive(p);
+            if (!inUse && !powerAvailable(p)) continue;
+            const btn = document.createElement('button');
+            btn.className = 'power-btn' + (inUse ? ' active' : '') + (p.effect === 'warp' ? ' warp' : '');
+            btn.dataset.id = p.id;
+            btn.setAttribute('aria-label', p.name + (p.meters ? ' ' + p.meters + ' m' : '') + ' (key ' + p.key + ')');
+            const icon = document.createElement('span');
+            icon.className = 'pw-icon';
+            icon.textContent = p.icon;
+            const label = document.createElement('span');
+            label.className = 'pw-label';
+            label.textContent = p.meters ? numberFormat.format(p.meters) + ' m' : p.name;
+            const key = document.createElement('span');
+            key.className = 'pw-key';
+            key.textContent = p.key;
+            btn.append(icon, label, key);
+            if (!inUse) {
+                const count = document.createElement('span');
+                count.className = 'pw-count';
+                count.textContent = String(Progress.powerCount(p));
+                btn.appendChild(count);
+            }
+            btn.disabled = inUse;
+            bar.appendChild(btn);
+        }
+        setOverlay(bar, bar.childElementCount > 0);
+        powerBarState.warpShown = !!bar.querySelector('.warp');
+        powerBarState.sig = powerSignature();
+        updatePowerRings();
+    }
+
+    function powerSignature() {
+        const pw = run.pw;
+        return (pw.shield ? 's' : '') + (pw.magnet > 0 ? 'm' : '') + (pw.double > 0 ? 'd' : '');
+    }
+
+    // Called every frame: rebuild when something starts or runs out, else just move the rings.
+    function updatePowerBar() {
+        if (!run.pw) return;
+        if ((powerBarState.warpShown && meters() >= POWER.warpWindow) || powerSignature() !== powerBarState.sig) {
+            buildPowerBar();
+        } else {
+            updatePowerRings();
+        }
+    }
+
+    function updatePowerRings() {
+        const pw = run.pw;
+        for (const btn of dom.powerBar.children) {
+            if (!btn.classList.contains('active')) continue;
+            const id = btn.dataset.id;
+            const left = id === 'magnet' ? pw.magnet / pw.magnetMax : id === 'double' ? pw.double / pw.doubleMax : 1;
+            btn.style.setProperty('--left', left.toFixed(3));
+        }
+    }
+
+    function onPowerButton(e) {
+        const btn = e.target.closest('.power-btn');
+        if (!btn || btn.disabled) return;
+        const p = POWER.list.find((q) => q.id === btn.dataset.id);
+        if (p) activatePower(p);
     }
 
     function updatePopups(dt) {
@@ -755,6 +970,7 @@
         drawEntities(trackPos);
         drawPlayer(alt);
         drawPopups();
+        if (run.pw && run.pw.warpFx > 0) drawWarp(run.pw.warpFx / WARP_FX);
         if (run.state === 'dying' || run.state === 'gameover') drawWasted();
     }
 
@@ -1039,11 +1255,77 @@
         // A skin's `scale` enlarges it around the feet, so it still stands on the ground.
         const skin = skinById(Progress.data.selected);
         const drawn = size * ((skin && skin.scale) || 1);
+        const pw = run.pw;
         ctx.save();
         ctx.translate(CONFIG.PLAYER_X + size / 2, y + size / 2);
         ctx.rotate(tilt);
+        if (pw && pw.blink > 0 && Math.floor(pw.blink * 14) % 2 === 0) ctx.globalAlpha = 0.35; // just lost the shield
         drawSprite(skinSprite(skin), -drawn / 2, def.feet * (size - drawn) - size / 2, drawn, '#333');
+        ctx.globalAlpha = 1;
+        if (pw && pw.shield) drawShieldBubble(size, run.clock);
+        if (pw && pw.blink > SHIELD_BLINK - 0.3) drawShieldBurst(size, (SHIELD_BLINK - pw.blink) / 0.3);
+        if (pw && pw.magnet > 0) drawMagnetField(size, run.clock);
         ctx.restore();
+    }
+
+    function drawShieldBubble(size, t) {
+        const r = size * 0.62 + Math.sin(t * 6) * 2;
+        const g = ctx.createRadialGradient(0, 0, r * 0.55, 0, 0, r);
+        g.addColorStop(0, 'rgba(120,200,255,0)');
+        g.addColorStop(1, 'rgba(120,200,255,0.45)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,235,255,0.9)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+
+    // Expanding ring when the shield absorbs a hit (q goes 0 -> 1).
+    function drawShieldBurst(size, q) {
+        ctx.globalAlpha = 1 - q;
+        ctx.strokeStyle = '#bfe6ff';
+        ctx.lineWidth = 6 * (1 - q) + 1;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * (0.62 + q * 0.6), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
+    // Faint pulsing rings reaching forward: bananas in range are being pulled in.
+    function drawMagnetField(size, t) {
+        ctx.strokeStyle = 'rgba(255,225,53,0.5)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+            const q = (t * 1.2 + i / 3) % 1;
+            ctx.globalAlpha = 1 - q;
+            ctx.beginPath();
+            ctx.arc(size * 0.2, 0, size * (0.5 + q * 1.3), -0.7, 0.7);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // Head start: white flash and speed streaks rushing past (q goes 1 -> 0).
+    function drawWarp(q) {
+        ctx.globalAlpha = q * q * 0.7;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, view.top, view.w, view.h);
+        ctx.globalAlpha = q;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let i = 0; i < 22; i++) {
+            const y = view.top + hash(i + 17) * view.h;
+            const x = ((hash(i + 3) * view.w) - (1 - q) * view.w * 3) % view.w;
+            const xx = x < 0 ? x + view.w : x;
+            const len = 80 + hash(i + 9) * 220;
+            ctx.moveTo(xx, y);
+            ctx.lineTo(xx + len, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
     }
 
     function drawPopups() {
@@ -1055,8 +1337,9 @@
         for (const p of popups) {
             if (p.life <= 0) continue;
             ctx.globalAlpha = clamp(p.life / 0.4, 0, 1);
-            ctx.strokeText('+1', p.x, p.y);
-            ctx.fillText('+1', p.x, p.y);
+            ctx.fillStyle = p.text === '+1' ? '#ffe135' : '#ff9d2e'; // doubled bananas stand out
+            ctx.strokeText(p.text, p.x, p.y);
+            ctx.fillText(p.text, p.x, p.y);
         }
         ctx.globalAlpha = 1;
     }
@@ -1094,7 +1377,12 @@
     const hud = { last: { bananas: -1, meters: -1 } };
 
     function updateHud() {
-        const m = meters();
+        const pw = run.pw;
+        // During the head-start animation the distance counter spins up to the new distance.
+        const m = pw && pw.warpFx > 0
+            ? Math.round(lerp(meters(), pw.warpFrom, (pw.warpFx / WARP_FX) ** 2))
+            : meters();
+        updatePowerBar();
         if (m !== hud.last.meters) { hud.last.meters = m; dom.hudDistance.textContent = numberFormat.format(m) + ' m'; }
         if (run.bananas !== hud.last.bananas) { hud.last.bananas = run.bananas; dom.hudBananas.textContent = numberFormat.format(run.bananas); }
     }
@@ -1204,6 +1492,7 @@
         run.dieTime = 0;
         input.reset();
         dom.pauseBtn.classList.add('hidden');
+        setOverlay(dom.powerBar, false);
         if (navigator.vibrate) { try { navigator.vibrate(120); } catch { /* unsupported */ } }
         const before = purchasableIds();
         run.result = Records.finishRun(meters(), run.bananas);
@@ -1264,6 +1553,7 @@
     // =====================================================================
 
     let skinsPage = 0;
+    let shopTab = 'skins'; // 'skins' | 'powerups'
     const compactFormat = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
     // Narrowest comfortable card and tallest a card may grow, in CSS pixels. The shortest card
     // is measured from a real card, so it always matches the current fonts and screen size.
@@ -1273,6 +1563,49 @@
         skinsPage = 0;
         showScreen('skins'); // visible first, so the grid can be measured
         renderSkins();
+    }
+
+    function setShopTab(tab) {
+        if (tab === shopTab) return;
+        shopTab = tab;
+        skinsPage = 0;
+        renderSkins();
+    }
+
+    function buildPowerCard(p) {
+        const bank = Progress.data.bananas;
+        const have = Progress.powerCount(p);
+        const full = have >= POWER.max;
+
+        const card = document.createElement('div');
+        card.className = 'skin-card power-card';
+        const thumb = document.createElement('div');
+        thumb.className = 'skin-thumb power-thumb';
+        thumb.textContent = p.icon;
+
+        const info = document.createElement('div');
+        info.className = 'skin-info';
+        const name = document.createElement('div');
+        name.className = 'skin-name';
+        name.textContent = p.meters ? numberFormat.format(p.meters) + ' m start' : p.name;
+        const desc = document.createElement('div');
+        desc.className = 'skin-status';
+        desc.textContent = p.info;
+        const owned = document.createElement('div');
+        owned.className = 'skin-status power-owned';
+        owned.textContent = full ? 'Owned: ' + have + ' (max)' : 'Owned: ' + have + ' · key ' + p.key;
+        info.append(name, desc, owned);
+
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-small';
+        btn.dataset.id = p.id;
+        btn.dataset.kind = 'power';
+        btn.textContent = full ? 'Max ' + POWER.max : '🍌 ' + numberFormat.format(p.price);
+        btn.disabled = full || bank < p.price;
+        if (!btn.disabled) btn.classList.add('btn-primary');
+        info.appendChild(btn);
+        card.append(thumb, info);
+        return card;
     }
 
     // The first distance goal the player still has to reach, or null.
@@ -1350,19 +1683,22 @@
         return card;
     }
 
-    // Pick columns/rows so every card fits on screen; extra skins go onto further pages.
-    function layoutSkins() {
+    // Pick columns/rows so every card fits on screen; extra cards go onto further pages.
+    function layoutSkins(count) {
         const grid = dom.skinsGrid;
         const gap = parseFloat(getComputedStyle(grid).rowGap) || 10;
 
-        // Measure the tallest kind of card (locked, with a progress bar) at its natural height.
+        // Measure the tallest kind of card on this tab (a locked skin with a progress bar, or
+        // a power-up) at its natural height.
         grid.textContent = '';
         grid.style.setProperty('--cols', 1);
         grid.style.setProperty('--rows', 1);
         grid.style.setProperty('--row-h', 'auto');
-        const probe = buildSkinCard({ id: '__probe', name: 'Probe', price: 1, image: SKINS[0].image },
-            { label: 'Total', have: 1, need: 2, full: '' });
-        probe.querySelector('.skin-thumb').style.height = '40px';
+        grid.style.setProperty('--thumb', '40px');
+        const probe = shopTab === 'skins'
+            ? buildSkinCard({ id: '__probe', name: 'Probe', price: 1, image: SKINS[0].image },
+                { label: 'Total', have: 1, need: 2, full: '' })
+            : buildPowerCard(POWER.list[0]);
         grid.appendChild(probe);
         const minH = Math.ceil(probe.offsetHeight);
         grid.textContent = '';
@@ -1371,8 +1707,8 @@
         const maxCols = Math.max(1, Math.floor((w + gap) / (CARD_MIN_W + gap)));
         const maxRows = Math.max(1, Math.floor((h + gap) / (minH + gap)));
         const perPage = maxCols * maxRows;
-        const pages = Math.max(1, Math.ceil(SKINS.length / perPage));
-        const onPage = Math.min(SKINS.length, perPage);
+        const pages = Math.max(1, Math.ceil(count / perPage));
+        const onPage = Math.min(count, perPage);
         const rows = Math.min(maxRows, Math.ceil(onPage / maxCols));
         const cols = Math.ceil(onPage / rows); // balance the rows (e.g. 4 + 4 rather than 5 + 3)
         const rowH = Math.max(minH, Math.min(CARD_MAX_H, (h - gap * (rows - 1)) / rows));
@@ -1387,26 +1723,40 @@
 
     function renderSkins() {
         dom.skinsWallet.textContent = numberFormat.format(Progress.data.bananas);
-        let { perPage, pages } = layoutSkins();
+        for (const tab of dom.shopTabs) {
+            const on = tab.dataset.tab === shopTab;
+            tab.classList.toggle('active', on);
+            tab.setAttribute('aria-selected', String(on));
+        }
+        const items = shopTab === 'skins' ? SKINS : POWER.list;
+        let { perPage, pages } = layoutSkins(items.length);
         if (pages > 1 !== !dom.skinsPager.classList.contains('hidden')) {
             // Showing/hiding the pager can change the header height (it wraps on narrow
             // screens), so lay out again with the pager in its final state.
             setOverlay(dom.skinsPager, pages > 1);
-            ({ perPage, pages } = layoutSkins());
+            ({ perPage, pages } = layoutSkins(items.length));
             setOverlay(dom.skinsPager, pages > 1);
         }
         skinsPage = clamp(skinsPage, 0, pages - 1);
         dom.skinsPageText.textContent = (skinsPage + 1) + '/' + pages;
         dom.skinsPrev.disabled = skinsPage === 0;
         dom.skinsNext.disabled = skinsPage === pages - 1;
-        for (const skin of SKINS.slice(skinsPage * perPage, (skinsPage + 1) * perPage)) {
-            dom.skinsGrid.appendChild(buildSkinCard(skin, Progress.owns(skin) ? null : nextGoal(skin)));
+        for (const item of items.slice(skinsPage * perPage, (skinsPage + 1) * perPage)) {
+            dom.skinsGrid.appendChild(shopTab === 'skins'
+                ? buildSkinCard(item, Progress.owns(item) ? null : nextGoal(item))
+                : buildPowerCard(item));
         }
     }
 
     function onSkinButton(e) {
         const btn = e.target.closest('button[data-id]');
         if (!btn || btn.disabled) return;
+        if (btn.dataset.kind === 'power') {
+            const p = POWER.list.find((q) => q.id === btn.dataset.id);
+            if (p) Progress.buyPower(p);
+            renderSkins();
+            return;
+        }
         const skin = skinById(btn.dataset.id);
         if (!skin) return;
         if (Progress.owns(skin)) Progress.select(skin);
@@ -1453,6 +1803,9 @@
         dom.skinsBackBtn.addEventListener('click', () => { refreshMenu(); showScreen('menu'); });
         dom.skinsGrid.addEventListener('click', onSkinButton);
         dom.skinsPrev.addEventListener('click', () => { skinsPage--; renderSkins(); });
+        for (const tab of dom.shopTabs) tab.addEventListener('click', () => setShopTab(tab.dataset.tab));
+        dom.powerBar.addEventListener('pointerdown', (e) => e.stopPropagation());
+        dom.powerBar.addEventListener('click', (e) => { onPowerButton(e); blurActive(); });
         dom.skinsNext.addEventListener('click', () => { skinsPage++; renderSkins(); });
         dom.pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
         dom.pauseBtn.addEventListener('click', () => { blurActive(); togglePause(); });

@@ -59,10 +59,10 @@ Add a line to the `SKINS` list:
     image: 'Assets/Player/256x256NinjaGorilla.png' },
 ```
 
-Skins appear in the Skins screen in the same order as the list.
+Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.4.0'` → `'3.4.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.5.0'` → `'3.5.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -91,7 +91,7 @@ the versions (step 4).
 | Setting | Required | What it does |
 |---|---|---|
 | `id` | yes | Unique internal name. Players' saves store it, so **never change it** after the skin has been released. |
-| `name` | yes | Name shown in the Skins screen. |
+| `name` | yes | Name shown in the Shop. |
 | `price` | yes | Cost in banked bananas. `0` makes it free and owned from the start. |
 | `bestRun` | no | Metres the player must reach **in one run** before they can buy it. |
 | `totalRun` | no | Metres the player must run **across all runs** before they can buy it. |
@@ -108,19 +108,39 @@ progress bar for each goal it's missing.
   character is never easier or harder to play.
 - **Balancing prices:** a run earns roughly 1 banana for every 8–10 metres. A 500 m run
   banks about 50–60 bananas.
-- **Where progress is saved:** banked bananas, lifetime distance and owned skins are stored in
-  the browser (`localStorage`, key `harunbe.progress.v1`). Records are stored separately, under
-  `harunbe.records.v2`.
+- **Skin distance goals are all above 1,000 m.** The biggest head start power-up puts you at
+  1,000 m, so a head start alone never unlocks a skin. Keep new goals above that too.
+- **Where progress is saved:** banked bananas, lifetime distance, owned skins and stored
+  power-ups are kept in the browser (`localStorage`, key `harunbe.progress.v1`). Records are
+  stored separately, under `harunbe.records.v2`.
 - **Removing a skin:** players who bought it just lose it from the list, and the game falls
   back to the default gorilla if it was equipped.
+
+## Power-ups
+
+Power-ups are bought in the Shop's **Power-ups** tab and stored, up to 99 of each. During a run
+they show as buttons along the bottom of the screen. Press a button, or its number key, to use
+one. Each power-up can be used once per run, and any you don't press stay in storage.
+
+| Power-up | Key | Effect | Price |
+|---|---|---|---|
+| 🛡️ Shield | 1 | Blocks the next hit, for the rest of the run | 🍌 150 |
+| 🧲 Magnet | 2 | Pulls in nearby bananas for 15 s | 🍌 60 |
+| ×2 Double | 3 | Bananas count double for 20 s | 🍌 80 |
+| ⚡ Head start 600 / 800 / 1,000 m | 4 / 5 / 6 | Skips ahead. Only in the first 60 m, one per run | 🍌 150 / 250 / 400 |
+
+All of these (prices, durations, keys, the 99 cap and the 60 m head-start window) are in
+[`powerups.js`](powerups.js). A head start's distance counts toward the run, the Top 5 lists and
+skin goals. It skips that stretch's bananas.
 
 ## Project layout
 
 | File | Contents |
 |---|---|
 | `skins.js` | The skin catalog. |
+| `powerups.js` | The power-up catalog: prices, durations, keys, storage cap. |
 | `engine.js` | Game rules: physics, speed and difficulty (`CONFIG`), enemy patterns, fairness checks. |
-| `game.js` | Everything in the browser: drawing, input, screens, records, the skin shop. |
+| `game.js` | Everything in the browser: drawing, input, screens, records, the Shop, power-ups. |
 | `sw.js` | Offline support (service worker). |
 | `tools/make-skin.ps1` | Turns a picture into a skin sprite. |
 | `tools/fairness-test.js` | `node tools/fairness-test.js` checks that every enemy group can be cleared. Run it after changing difficulty. |

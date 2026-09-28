@@ -275,6 +275,92 @@ h3 {
     text-shadow: 0 6px 0 #6b4a00, 0 10px 20px rgba(0, 0, 0, 0.6);
 }
 
+/* --- Power-up bar (bottom of the game screen) ---------------------------- */
+
+.power-bar {
+    position: absolute;
+    z-index: 20;
+    left: 50%;
+    bottom: calc(10px + var(--safe-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+}
+
+.power-btn {
+    position: relative;
+    width: 4rem;
+    height: 4rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    overflow: hidden;
+    font-family: var(--font);
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-radius: 14px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.power-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.65); }
+.power-btn:active:not(:disabled) { transform: translateY(2px); }
+.power-btn:focus-visible { outline: 3px solid var(--banana); outline-offset: 2px; }
+
+.pw-icon { font-size: 1.6rem; line-height: 1; font-weight: bold; color: var(--banana); }
+.pw-label { font-size: 0.62rem; font-weight: bold; white-space: nowrap; }
+
+.pw-count {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--banana);
+}
+
+.pw-key {
+    position: absolute;
+    top: 2px;
+    left: 5px;
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+
+/* A running power-up glows, and its bar drains as the time runs out. */
+.power-btn.active {
+    cursor: default;
+    border-color: var(--banana);
+    box-shadow: 0 0 12px rgba(255, 225, 53, 0.6);
+}
+
+.power-btn.active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 4px;
+    width: calc(var(--left, 1) * 100%);
+    background: var(--banana);
+}
+
+.power-btn.warp { border-color: rgba(140, 200, 255, 0.8); }
+
+/* Touch screens have no number keys. */
+@media (pointer: coarse) { .pw-key { display: none; } }
+
+/* Narrow (portrait) screens: smaller buttons so all six fit side by side. */
+@media (max-width: 480px) {
+    .power-bar { gap: 5px; }
+    .power-btn { width: 3.2rem; height: 3.2rem; }
+    .pw-icon { font-size: 1.25rem; }
+    .pw-label { font-size: 0.55rem; }
+}
+
 /* --- Results ------------------------------------------------------------ */
 
 .results-panel { min-width: min(28rem, calc(100vw - 24px)); }
@@ -470,6 +556,43 @@ h3 {
 }
 
 .wallet-pill { pointer-events: none; }
+
+.shop-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+}
+
+.shop-tab {
+    min-width: 0;
+    min-height: 2rem;
+    padding: 0.2em 0.8em;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.shop-tab.active {
+    color: #3b2308;
+    text-shadow: none;
+    background: var(--banana);
+    border-color: #c9a800;
+}
+
+.shop-tab.active:hover { background: var(--banana); }
+
+.power-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--thumb, 64px) * 0.55);
+    font-weight: bold;
+    color: var(--banana);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+}
 
 .btn-wallet {
     margin-left: 4px;
@@ -676,6 +799,10 @@ h3 {
     .screen-header h2 { font-size: 1.5rem; }
     .screen-header .btn { min-height: 2.1rem; }
     .screen-header .hud-pill { padding: 2px 12px; }
+    .shop-tab { min-height: 1.8rem; font-size: 0.9rem; }
+    .power-btn { width: 3.3rem; height: 3.3rem; }
+    .pw-icon { font-size: 1.3rem; }
+    .pw-label { font-size: 0.55rem; }
     #countdown-text { font-size: 6rem; }
 }
 
@@ -698,6 +825,11 @@ h3 {
     .skin-name { font-size: 0.95rem; }
     .skin-status { font-size: 0.72rem; }
     .skins-panel { height: calc(100% - 12px); }
+    /* Keep the power bar in the dirt below the ground line, clear of approaching enemies. */
+    .power-bar { bottom: calc(4px + var(--safe-bottom)); gap: 6px; }
+    .power-btn { width: 2.75rem; height: 2.75rem; border-radius: 11px; }
+    .pw-icon { font-size: 1.1rem; }
+    .pw-label { font-size: 0.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

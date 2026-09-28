@@ -28,7 +28,7 @@
         <h1 class="visually-hidden">HaRUNbe</h1>
         <div class="menu-panel">
             <button id="start-btn" class="btn btn-primary" disabled>Loading…</button>
-            <button id="skins-btn" class="btn">Skins <span class="btn-wallet">🍌 <span id="skins-btn-wallet">0</span></span></button>
+            <button id="skins-btn" class="btn">Shop <span class="btn-wallet">🍌 <span id="skins-btn-wallet">0</span></span></button>
             <button id="records-btn" class="btn">Records</button>
             <p id="menu-best" class="menu-best"></p>
             <p class="portrait-hint">Best played in landscape</p>
@@ -68,11 +68,15 @@
     </section>
 
     <!-- Skins -->
-    <section id="skins-screen" class="screen" aria-label="Skins">
+    <section id="skins-screen" class="screen" aria-label="Shop">
         <div class="panel fit-panel skins-panel">
             <div class="screen-header">
                 <button id="skins-back-btn" class="btn btn-small back-btn" aria-label="Back">‹ Back</button>
-                <h2>Skins</h2>
+                <h2>Shop</h2>
+                <div class="shop-tabs" role="tablist">
+                    <button class="btn btn-small shop-tab active" data-tab="skins" role="tab" aria-selected="true">Skins</button>
+                    <button class="btn btn-small shop-tab" data-tab="powerups" role="tab" aria-selected="false">Power-ups</button>
+                </div>
                 <div class="hud-pill wallet-pill" aria-label="Banked bananas">🍌 <span id="skins-wallet">0</span></div>
                 <div id="skins-pager" class="pager hidden">
                     <button id="skins-prev" class="btn btn-small pager-btn" aria-label="Previous page">‹</button>
@@ -93,13 +97,14 @@
             <div class="hud-pill"><span id="hud-distance">0 m</span></div>
         </div>
         <button id="pause-btn" class="btn pause-btn" aria-label="Pause">&#10074;&#10074;</button>
+        <div id="power-bar" class="power-bar hidden" aria-label="Power-ups"></div>
 
         <div id="pause-overlay" class="overlay hidden">
             <div class="panel">
                 <h2>Paused</h2>
                 <button id="resume-btn" class="btn btn-primary">Resume</button>
                 <button id="pause-menu-btn" class="btn">Main Menu</button>
-                <p class="hint">Space / tap = jump (hold for higher) · P or Esc = pause</p>
+                <p class="hint">Space / tap = jump (hold for higher) · 1–6 = power-ups · P or Esc = pause</p>
             </div>
         </div>
 
@@ -156,6 +161,7 @@
 
 <script src="engine.js"></script>
 <script src="skins.js"></script>
+<script src="powerups.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
