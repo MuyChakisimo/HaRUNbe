@@ -31,7 +31,12 @@
         skinsPageText: $('skins-page'),
         skinsPrev: $('skins-prev'),
         skinsNext: $('skins-next'),
-        shopTabs: document.querySelectorAll('.shop-tab'),
+        shopTabs: document.querySelectorAll('#skins-screen .shop-tab'),
+        installBtn: $('install-btn'),
+        installOverlay: $('install-overlay'),
+        installCloseBtn: $('install-close-btn'),
+        installTabs: document.querySelectorAll('.install-tab'),
+        installToast: $('install-toast'),
         powerBar: $('power-bar'),
         resWallet: $('res-wallet'),
         resUnlocks: $('res-unlocks'),
@@ -1878,6 +1883,102 @@
     }
 
     // =====================================================================
+    // Install (Add to Home Screen)
+    // =====================================================================
+
+    // Chrome, Edge and Samsung Internet (Android and desktop) offer an install prompt, which
+    // the Install button opens directly. iPhone/iPad have no prompt, so the button shows a
+    // step-by-step guide instead (as it also does on Android browsers without a prompt).
+    const Install = (function () {
+        const ua = navigator.userAgent || '';
+        const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/i.test(ua);
+        // Checked once at start-up, before the game asks for fullscreen (which would also
+        // match "display-mode: fullscreen").
+        let installed = false;
+        let prompt = null;   // the browser's install prompt, when it offers one
+        let toastTimer = 0;
+
+        function runningAsApp() {
+            const mm = (q) => window.matchMedia && window.matchMedia(q).matches;
+            return mm('(display-mode: standalone)') || mm('(display-mode: fullscreen)') || navigator.standalone === true;
+        }
+
+        function update() {
+            setOverlay(dom.installBtn, !installed && (!!prompt || isIOS || isAndroid));
+        }
+
+        async function onClick() {
+            if (prompt) {
+                const p = prompt;
+                prompt = null; // a prompt can only be shown once
+                try {
+                    await p.prompt();
+                    const choice = await p.userChoice;
+                    if (choice && choice.outcome === 'accepted') installed = true;
+                } catch { /* prompt unavailable */ }
+                update();
+                return;
+            }
+            openGuide(isAndroid ? 'android' : 'ios');
+        }
+
+        function openGuide(os) {
+            showTab(os);
+            setOverlay(dom.installOverlay, true);
+            dom.installCloseBtn.focus();
+        }
+
+        function closeGuide() {
+            setOverlay(dom.installOverlay, false);
+            dom.installBtn.focus();
+        }
+
+        function showTab(os) {
+            for (const tab of dom.installTabs) {
+                const on = tab.dataset.os === os;
+                tab.classList.toggle('active', on);
+                tab.setAttribute('aria-selected', String(on));
+            }
+            for (const el of dom.installOverlay.querySelectorAll('.install-steps, .install-note')) {
+                el.classList.toggle('hidden', el.dataset.os !== os);
+            }
+        }
+
+        function toast(text) {
+            dom.installToast.textContent = text;
+            setOverlay(dom.installToast, true);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => setOverlay(dom.installToast, false), 3500);
+        }
+
+        function init() {
+            installed = runningAsApp();
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault(); // use our button instead of the browser's own banner
+                prompt = e;
+                update();
+            });
+            window.addEventListener('appinstalled', () => {
+                installed = true;
+                prompt = null;
+                update();
+                toast('HaRUNbe was added to your home screen!');
+            });
+            dom.installBtn.addEventListener('click', onClick);
+            dom.installCloseBtn.addEventListener('click', closeGuide);
+            dom.installOverlay.addEventListener('click', (e) => { if (e.target === dom.installOverlay) closeGuide(); });
+            for (const tab of dom.installTabs) tab.addEventListener('click', () => showTab(tab.dataset.os));
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Escape' && !dom.installOverlay.classList.contains('hidden')) closeGuide();
+            });
+            update();
+        }
+
+        return { init };
+    })();
+
+    // =====================================================================
     // PWA
     // =====================================================================
 
@@ -1905,6 +2006,7 @@
         setupButtons();
         setupInput();
         setupViewportEvents();
+        Install.init();
         registerServiceWorker();
         resize();
         resetClouds();

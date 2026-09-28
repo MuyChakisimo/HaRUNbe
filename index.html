@@ -30,6 +30,7 @@
             <button id="start-btn" class="btn btn-primary" disabled>Loading…</button>
             <button id="skins-btn" class="btn">Shop <span class="btn-wallet">🍌 <span id="skins-btn-wallet">0</span></span></button>
             <button id="records-btn" class="btn">Records</button>
+            <button id="install-btn" class="btn install-btn hidden">📲 Install</button>
             <p id="menu-best" class="menu-best"></p>
             <p class="portrait-hint">Best played in landscape</p>
         </div>
@@ -37,7 +38,44 @@
             A new version is ready. <button id="update-btn" class="btn btn-small">Reload</button>
         </div>
         <div id="version-text" class="version-text"></div>
+        <div id="install-toast" class="install-toast hidden" role="status"></div>
     </section>
+
+    <!-- Add to Home Screen guide (iPhone/iPad, and Android browsers without an install prompt) -->
+    <div id="install-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <div class="panel install-panel">
+            <div class="screen-header">
+                <h2 id="install-title">Add to Home Screen</h2>
+                <div class="shop-tabs" role="tablist">
+                    <button class="btn btn-small shop-tab install-tab" data-os="ios" role="tab">iPhone / iPad</button>
+                    <button class="btn btn-small shop-tab install-tab" data-os="android" role="tab">Android</button>
+                </div>
+            </div>
+
+            <ol class="install-steps" data-os="ios">
+                <li>Open this page in <strong>Safari</strong>.</li>
+                <li>Tap <strong>Share</strong>
+                    <svg class="install-icon" viewBox="0 0 24 24" aria-label="Share icon"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>
+                    at the bottom of the screen (top on iPad).</li>
+                <li>Scroll down and tap <strong>Add to Home Screen</strong>
+                    <svg class="install-icon" viewBox="0 0 24 24" aria-label="Add icon"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg></li>
+                <li>Tap <strong>Add</strong>. HaRUNbe opens full screen from your home screen, even offline.</li>
+            </ol>
+            <p class="install-note" data-os="ios">⚠️ The home-screen app keeps its own save, separate from Safari: bananas, skins and records from Safari don't carry over. Install first, then play.</p>
+
+            <ol class="install-steps" data-os="android">
+                <li>Open this page in <strong>Chrome</strong>.</li>
+                <li>Tap the menu
+                    <svg class="install-icon" viewBox="0 0 24 24" aria-label="Menu icon"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                    at the top right.</li>
+                <li>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>.</li>
+                <li>Tap <strong>Install</strong>. HaRUNbe opens full screen from your home screen, even offline.</li>
+            </ol>
+            <p class="install-note" data-os="android">Your bananas, skins and records come with you.</p>
+
+            <button id="install-close-btn" class="btn btn-primary">Got it</button>
+        </div>
+    </div>
 
     <!-- Records -->
     <section id="records-screen" class="screen" aria-label="Records">

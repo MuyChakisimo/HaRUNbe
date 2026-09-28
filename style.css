@@ -459,6 +459,79 @@ h3 {
     color: var(--banana);
 }
 
+/* --- Install (Add to Home Screen) ---------------------------------------- */
+
+.install-btn { background: #1f6fb2; border-color: #134a78; }
+.install-btn:hover:not(:disabled) { background: #2a86d4; }
+
+.install-panel {
+    width: min(34rem, calc(100vw - 24px));
+    text-align: left;
+}
+
+.install-panel h2 { font-size: 1.7rem; }
+
+.install-steps {
+    margin: 0;
+    padding-left: 1.5em;
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    line-height: 1.35;
+}
+
+.install-steps li::marker { font-weight: bold; color: var(--banana); }
+
+.install-icon {
+    display: inline-block;
+    width: 1.35em;
+    height: 1.35em;
+    vertical-align: -0.3em;
+    padding: 2px;
+    fill: none;
+    stroke: #6fc1ff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.install-icon circle { fill: #6fc1ff; stroke: none; }
+
+.install-note {
+    margin: 0;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+}
+
+.install-panel > .btn { align-self: center; }
+
+.install-toast {
+    position: absolute;
+    left: 50%;
+    top: calc(12px + var(--safe-top));
+    transform: translateX(-50%);
+    padding: 10px 16px;
+    font-weight: bold;
+    background: var(--panel);
+    border: 2px solid var(--jungle-light);
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+/* Short landscape phones: steps side by side so the guide fits without scrolling. */
+@media (orientation: landscape) and (max-height: 430px) {
+    .install-panel { width: min(46rem, calc(100vw - 24px)); }
+    .install-steps { grid-template-columns: 1fr 1fr; column-gap: 28px; font-size: 0.92rem; }
+    .install-panel h2 { font-size: 1.4rem; }
+    .install-note { padding: 5px 10px; font-size: 0.82rem; }
+}
+
 /* --- Shared header for the Records and Skins screens --------------------- */
 
 .screen-header {

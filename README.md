@@ -2,6 +2,20 @@
 
 An endless jungle runner. Jump over tigers and hawks, collect bananas, and spend them on skins for your gorilla.
 
+## Installing the game (Add to Home Screen)
+
+HaRUNbe is a PWA, so it can be installed and played full screen and offline. The **📲 Install**
+button on the main menu handles each device:
+
+- **Android (Chrome, Edge, Samsung Internet) and desktop Chrome/Edge:** opens the browser's own
+  install prompt. The button disappears once the game is installed.
+- **iPhone / iPad:** Apple has no install prompt, so the button shows the steps: Safari →
+  **Share** → **Add to Home Screen** → **Add**. On iPhone the installed app keeps its own save,
+  separate from Safari, so progress from Safari doesn't carry over.
+- **Other Android browsers:** shows the Android steps (menu ⋮ → **Add to Home screen**).
+- The button is hidden when the game is already running as an installed app, and on desktop
+  browsers that can't install it.
+
 ## Adding a new skin
 
 A skin is a single entry in [`skins.js`](skins.js). There are two kinds:
@@ -62,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.5.0'` → `'3.5.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.6.0'` → `'3.6.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
