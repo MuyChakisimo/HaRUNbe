@@ -393,6 +393,98 @@ h3 {
 .board li .value { float: right; font-weight: bold; color: var(--banana); }
 .board li.empty { list-style: none; margin-left: -1.6em; color: var(--muted); }
 
+/* --- Skins screen ------------------------------------------------------- */
+
+#skins-screen {
+    justify-content: center;
+    align-items: center;
+    background: var(--lime) url('Assets/Scenery/TitleScreen.jpg') center / cover no-repeat;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.skins-panel { width: min(56rem, calc(100vw - 24px)); }
+
+.skins-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.wallet-pill { pointer-events: none; }
+
+.btn-wallet {
+    margin-left: 4px;
+    font-size: 0.9em;
+    color: var(--banana);
+}
+
+.skins-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+.skin-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 3px solid transparent;
+    border-radius: 14px;
+}
+
+.skin-card.equipped { border-color: var(--banana); background: rgba(255, 225, 53, 0.14); }
+
+.skin-thumb {
+    width: 88px;
+    height: 88px;
+}
+
+.skin-name {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.skin-card.locked .skin-name { color: var(--muted); }
+
+.skin-req {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.skin-bar {
+    width: 85%;
+    height: 7px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 999px;
+}
+
+.skin-bar span {
+    display: block;
+    height: 100%;
+    background: var(--banana);
+}
+
+.skin-count {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.skin-card .btn { margin-top: auto; min-width: 7rem; }
+
+.unlocks {
+    margin: 0;
+    font-weight: bold;
+    color: var(--banana);
+}
+
 /* --- Rotate prompt ------------------------------------------------------ */
 
 .rotate-overlay {
@@ -472,6 +564,9 @@ h3 {
     .record-value { font-size: 1.5rem; }
     .result, .record-card { padding: 6px 12px; }
     .hud-pill { font-size: 1.1rem; padding: 4px 12px; }
+    .skins-grid { grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 8px; }
+    .skin-thumb { width: 64px; height: 64px; }
+    .skin-card { padding: 6px; }
     #countdown-text { font-size: 6rem; }
 }
 

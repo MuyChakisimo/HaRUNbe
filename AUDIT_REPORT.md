@@ -69,21 +69,24 @@
 ## Gameplay tuning (all in `CONFIG`, `engine.js`)
 
 - **Jump.** A tap gives about 110 units of apex height and 0.58 s in the air. Holding for up to 0.26 s gives about 238 units and 0.91 s. A tiger is about 50 units tall, so a tap clears it. There is a 100 ms press buffer before landing, with no air jumps and no flying.
-- **Speed.** Starts at 420 u/s (8.4 m/s) and rises smoothly with distance toward a hard cap of 820 u/s (16.4 m/s), using `1 - e^(-m/2200)`.
+- **Speed.** Starts at 440 u/s (8.8 m/s) and rises smoothly with distance toward a hard cap of 860 u/s (17.2 m/s), using `1 - e^(-m/1600)`. Gaps between clusters are tuned in `CONFIG.spawn`.
 - **Obstacle patterns.** Each unlocks at a set distance:
 
   | Pattern | Unlocks at | How to clear it |
   |---|---|---|
   | tiger | 0 m | short hop |
-  | high hawk | 120 m | stay on the ground |
-  | low hawk | 250 m | short hop |
-  | mid hawk | 500 m | held jump |
-  | tiger pair | 900 m | a slightly longer hold |
-  | tiger then high hawk | 1,500 m | short hop only |
-  | tiger trio | 2,400 m | full jump |
+  | high hawk | 80 m | stay on the ground |
+  | low hawk | 180 m | short hop |
+  | mid hawk | 350 m | held jump |
+  | tiger pair | 600 m | a slightly longer hold |
+  | two low hawks | 800 m | one long jump |
+  | tiger then high hawk | 1,000 m | short hop only |
+  | tiger then low hawk | 1,300 m | long held jump |
+  | tiger trio | 1,700 m | full jump |
 
 - **Fairness.** Every instance is checked when it is generated and needs at least 70 ms of timing slack.
-- **Bananas.** They sit in three height tiers (ground, short hop, held jump) or on arcs traced along a real clearing jump. Each one is checked to be reachable, and the landing afterwards leaves 0.3 s before the next hazard.
+- **Bananas.** They sit in three height tiers (ground, short hop, held jump) or on arcs traced along a real clearing jump. Each one is checked to be reachable, and the landing afterwards leaves 0.24 s before the next hazard.
+- **Skins.** Defined in `skins.js` (name, price, distance goals, image or recolour). Bananas from every run are banked in `harunbe.progress.v1` and spent in the Skins screen. Skins are cosmetic; the hitbox never changes.
 - **Distance.** 50 units = 1 m, counted only during active play.
 - **Day/night.** A 120 s cycle starting in the morning. The sun and moon travel left-to-right arcs and set behind the jungle. The starry sky and the dusk/dawn glow crossfade according to the sun's elevation.
 

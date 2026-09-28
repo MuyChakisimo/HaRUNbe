@@ -15,7 +15,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.0.0',
+        VERSION: '3.1.1',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -35,9 +35,20 @@
         },
 
         speed: {
-            start: 420,        // units/s at 0 m  (~8.4 m/s)
-            max: 820,          // hard cap        (~16.4 m/s)
-            rampMeters: 2200   // speed approaches the cap exponentially over distance
+            start: 440,        // units/s at 0 m  (~8.8 m/s)
+            max: 860,          // hard cap        (~17.2 m/s)
+            rampMeters: 1600   // speed (and difficulty) approaches the cap exponentially over distance
+        },
+
+        // Spacing between obstacle clusters. A gap is never shorter than minGap() (so the next
+        // cluster is always fair), plus random "slack" that shrinks as the run gets harder.
+        // Less slack = enemies arrive more often.
+        spawn: {
+            slackStart: 0.8,     // seconds of extra random spacing at the start of a run
+            slackEnd: 0.1,       // ... and far into a run
+            breatherStart: 0.14, // chance of an extra-long relaxing gap at the start
+            breatherEnd: 0.05,   // ... and far into a run
+            breatherSeconds: 0.9 // how much longer a breather gap is
         },
 
         cycle: {
@@ -48,7 +59,7 @@
         fairness: {
             minWindow: 0.07,        // an obstacle must be clearable with >= 70 ms of timing slack
             minBananaWindow: 0.05,  // a banana must be collectable with >= 50 ms of slack
-            reaction: 0.30,         // seconds on the ground after landing before the next obstacle
+            reaction: 0.24,         // seconds on the ground after landing before the next obstacle
             pressStep: 1 / 240      // resolution of the timing search
         },
 
@@ -374,17 +385,21 @@
     const PATTERNS = [
         { name: 'tiger', from: 0, weight: 10,
             build: (x) => [makeTiger(x)] },
-        { name: 'hawkHigh', from: 120, weight: 4,          // stay on the ground and let it pass
+        { name: 'hawkHigh', from: 80, weight: 4,           // stay on the ground and let it pass
             build: (x, r) => [makeHawk(x, lerp(100, 116, r()))] },
-        { name: 'hawkLow', from: 250, weight: 4,           // a short hop clears it
+        { name: 'hawkLow', from: 180, weight: 4,           // a short hop clears it
             build: (x, r) => [makeHawk(x, lerp(12, 24, r()))] },
-        { name: 'hawkMid', from: 500, weight: 3,           // needs a held (higher) jump
+        { name: 'hawkMid', from: 350, weight: 3,           // needs a held (higher) jump
             build: (x, r) => [makeHawk(x, lerp(44, 58, r()))] },
-        { name: 'tigerPair', from: 900, weight: 3,         // two tigers: hold a little longer
+        { name: 'tigerPair', from: 600, weight: 3,         // two tigers: hold a little longer
             build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 84, r()))] },
-        { name: 'tigerUnderHawk', from: 1500, weight: 2,   // short hop only: a high hawk follows
+        { name: 'hawkLowPair', from: 800, weight: 2,       // two low hawks in a row: one long jump
+            build: (x, r) => [makeHawk(x, lerp(12, 22, r())), makeHawk(x + lerp(70, 90, r()), lerp(12, 22, r()))] },
+        { name: 'tigerUnderHawk', from: 1000, weight: 2,   // short hop only: a high hawk follows
             build: (x, r) => [makeTiger(x), makeHawk(x + lerp(150, 175, r()), lerp(104, 116, r()))] },
-        { name: 'tigerTrio', from: 2400, weight: 1,        // full-height jump
+        { name: 'tigerThenHawk', from: 1300, weight: 2,    // a tiger with a low hawk right behind it
+            build: (x, r) => [makeTiger(x), makeHawk(x + lerp(80, 100, r()), lerp(14, 26, r()))] },
+        { name: 'tigerTrio', from: 1700, weight: 1,        // full-height jump
             build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 70, r())), makeTiger(x + lerp(130, 140, r()))] }
     ];
 
@@ -453,9 +468,10 @@
         if (win && win.traj && r() < 0.3) placeArcBananas(out, win, s, hitboxes(obstacles));
 
         // Space out the next cluster. Slack shrinks with difficulty but never below minGap.
-        const slack = lerp(1.25, 0.35, diff);
+        const SP = CONFIG.spawn;
+        const slack = lerp(SP.slackStart, SP.slackEnd, diff);
         let gap = minGap(s) + s * slack * r();
-        if (r() < lerp(0.18, 0.08, diff)) gap += s * 0.9; // occasional breather
+        if (r() < lerp(SP.breatherStart, SP.breatherEnd, diff)) gap += s * SP.breatherSeconds;
         gen.prevObstacles = obstacles;
         gen.prevEnd = b.x1;
         gen.cursor = b.x1 + gap;

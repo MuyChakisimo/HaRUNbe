@@ -7,14 +7,17 @@
  * - Images are cache-first (they rarely change and are the bulk of the download).
  * - Bump VERSION whenever any file changes; old caches are deleted on activation.
  */
-const VERSION = '3.0.0';
+const VERSION = '3.1.1';
 const CACHE = 'harunbe-' + VERSION;
+
+importScripts('./skins.js'); // skin images are precached straight from the catalog
 
 const CORE = [
     './',
     './index.html',
     './style.css',
     './engine.js',
+    './skins.js',
     './game.js',
     './manifest.json'
 ];
@@ -39,6 +42,10 @@ const ASSETS = [
     './Assets/Icon/icon-256.png',
     './Assets/Icon/icon-512.png'
 ];
+for (const skin of self.HarunbeSkins) {
+    const url = './' + skin.image;
+    if (!ASSETS.includes(url)) ASSETS.push(url);
+}
 
 const NETWORK_TIMEOUT_MS = 3500;
 

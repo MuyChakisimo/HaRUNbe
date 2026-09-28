@@ -8,6 +8,7 @@
     const E = window.HarunbeEngine;
     const { CONFIG, SPRITES, clamp, lerp } = E;
     const GROUND_Y = CONFIG.GROUND_Y;
+    const SKINS = window.HarunbeSkins;
 
     // =====================================================================
     // DOM
@@ -15,11 +16,18 @@
 
     const $ = (id) => document.getElementById(id);
     const dom = {
-        screens: { menu: $('menu-screen'), records: $('records-screen'), game: $('game-screen') },
+        screens: { menu: $('menu-screen'), records: $('records-screen'), skins: $('skins-screen'), game: $('game-screen') },
         canvas: $('game-canvas'),
         startBtn: $('start-btn'),
         recordsBtn: $('records-btn'),
         recordsBackBtn: $('records-back-btn'),
+        skinsBtn: $('skins-btn'),
+        skinsBtnWallet: $('skins-btn-wallet'),
+        skinsBackBtn: $('skins-back-btn'),
+        skinsWallet: $('skins-wallet'),
+        skinsGrid: $('skins-grid'),
+        resWallet: $('res-wallet'),
+        resUnlocks: $('res-unlocks'),
         menuBest: $('menu-best'),
         version: $('version-text'),
         updateBanner: $('update-banner'),
@@ -75,12 +83,14 @@
 
     // A missing image never blocks the game; it is drawn with a simple fallback shape.
     function loadAssets() {
-        return Promise.all(Object.keys(ASSET_PATHS).map((key) => new Promise((resolve) => {
+        const paths = Object.assign({}, ASSET_PATHS);
+        for (const skin of SKINS) paths['skin:' + skin.image] = skin.image;
+        return Promise.all(Object.keys(paths).map((key) => new Promise((resolve) => {
             const im = new Image();
             im.decoding = 'async';
             im.onload = () => { img[key] = im; resolve(); };
             im.onerror = () => { img[key] = null; resolve(); };
-            im.src = ASSET_PATHS[key];
+            im.src = paths[key];
         })));
     }
 
@@ -180,6 +190,154 @@
     })();
 
     // =====================================================================
+    // Progress: banked bananas, lifetime distance, owned skins (localStorage)
+    // =====================================================================
+
+    const Progress = (function () {
+        const KEY = 'harunbe.progress.v1';
+        let data = blank();
+
+        function blank() {
+            return { version: 1, bananas: 0, totalMeters: 0, owned: [], selected: SKINS[0].id };
+        }
+
+        function count(v) { return Math.max(0, Math.floor(Number(v) || 0)); }
+
+        function load() {
+            let stored = null;
+            try { stored = JSON.parse(localStorage.getItem(KEY)); } catch { stored = null; }
+            data = blank();
+            if (stored && typeof stored === 'object') {
+                data.bananas = count(stored.bananas);
+                data.totalMeters = count(stored.totalMeters);
+                if (Array.isArray(stored.owned)) data.owned = stored.owned.filter((id) => typeof id === 'string');
+                if (typeof stored.selected === 'string') data.selected = stored.selected;
+            }
+            if (!owns(skinById(data.selected))) data.selected = SKINS[0].id;
+        }
+
+        function save() {
+            try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* storage full or blocked */ }
+        }
+
+        function owns(skin) { return !!skin && (skin.price === 0 || data.owned.includes(skin.id)); }
+
+        // The distance goals a skin needs before it can be bought.
+        function requirementsMet(skin) {
+            return (!skin.bestRun || Records.data.bestDistance >= skin.bestRun) &&
+                (!skin.totalRun || data.totalMeters >= skin.totalRun);
+        }
+
+        function canBuy(skin) {
+            return !owns(skin) && requirementsMet(skin) && data.bananas >= skin.price;
+        }
+
+        function buy(skin) {
+            if (!canBuy(skin)) return false;
+            data.bananas -= skin.price;
+            data.owned.push(skin.id);
+            data.selected = skin.id;
+            save();
+            return true;
+        }
+
+        function select(skin) {
+            if (!owns(skin)) return;
+            data.selected = skin.id;
+            save();
+        }
+
+        function bank(meters, bananas) {
+            data.bananas += count(bananas);
+            data.totalMeters += count(meters);
+            save();
+        }
+
+        return { load, owns, requirementsMet, canBuy, buy, select, bank, get data() { return data; } };
+    })();
+
+    function skinById(id) {
+        for (const skin of SKINS) if (skin.id === id) return skin;
+        return null;
+    }
+
+    // =====================================================================
+    // Skin sprites (recoloured once, then cached)
+    // =====================================================================
+
+    const skinSprites = {};
+
+    function skinSprite(skin) {
+        if (!skin) skin = SKINS[0];
+        if (skin.id in skinSprites) return skinSprites[skin.id];
+        const base = img['skin:' + skin.image] || img.gorilla;
+        if (!assetsReady) return base; // don't cache before the images have loaded
+        let sprite = base;
+        if (base && skin.recolor) {
+            try { sprite = recolor(base, skin.recolor); } catch { sprite = base; } // e.g. file:// pages
+        }
+        skinSprites[skin.id] = sprite;
+        return sprite;
+    }
+
+    function hexRgb(hex) {
+        const n = parseInt(String(hex).replace('#', ''), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    // Repaint the dark fur and the brightly coloured parts (face, hands, feet) with new colours,
+    // keeping the artwork's shading. The near-black outline is left alone.
+    function recolor(image, spec) {
+        const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext('2d');
+        g.drawImage(image, 0, 0, w, h);
+        const pixels = g.getImageData(0, 0, w, h);
+        const px = pixels.data;
+        const targets = [spec.fur ? hexRgb(spec.fur) : null, spec.skin ? hexRgb(spec.skin) : null];
+
+        // Per pixel: region weight (0 = fur, 1 = skin), outline weight, brightness.
+        const info = (i) => {
+            const r = px[i], gr = px[i + 1], b = px[i + 2];
+            const max = Math.max(r, gr, b), min = Math.min(r, gr, b);
+            const sat = max ? (max - min) / max : 0;
+            const lum = 0.299 * r + 0.587 * gr + 0.114 * b;
+            return { lum, skin: smoothstep(0.2, 0.4, sat), paint: smoothstep(26, 50, lum) };
+        };
+
+        // Average brightness of each region, so shading is mapped around the new colour.
+        const sum = [0, 0], weight = [0, 0];
+        for (let i = 0; i < px.length; i += 4) {
+            if (px[i + 3] < 200) continue;
+            const p = info(i);
+            const wf = (1 - p.skin) * p.paint, ws = p.skin * p.paint;
+            sum[0] += p.lum * wf; weight[0] += wf;
+            sum[1] += p.lum * ws; weight[1] += ws;
+        }
+        const ref = [sum[0] / (weight[0] || 1) || 1, sum[1] / (weight[1] || 1) || 1];
+
+        for (let i = 0; i < px.length; i += 4) {
+            if (px[i + 3] === 0) continue;
+            const p = info(i);
+            for (let region = 0; region < 2; region++) {
+                const t = targets[region];
+                if (!t) continue;
+                const amount = (region ? p.skin : 1 - p.skin) * p.paint;
+                if (amount <= 0) continue;
+                const shade = p.lum / ref[region];
+                for (let c = 0; c < 3; c++) {
+                    const v = shade <= 1 ? t[c] * shade : t[c] + (255 - t[c]) * Math.min(1, (shade - 1) * 0.8);
+                    px[i + c] = lerp(px[i + c], v, amount);
+                }
+            }
+        }
+        g.putImageData(pixels, 0, 0);
+        return canvas;
+    }
+
+    // =====================================================================
     // View / canvas sizing
     // =====================================================================
 
@@ -237,7 +395,8 @@
         dieTime: 0,
         countdown: 0,
         pauseReason: '',
-        result: null
+        result: null,
+        banked: true          // this run's bananas/distance were added to Progress
     };
 
     const clouds = [];
@@ -258,6 +417,7 @@
         run.clock = 0;
         run.dieTime = 0;
         run.result = null;
+        run.banked = false;
         run.pauseReason = '';
         for (const p of popups) p.life = 0;
         resetClouds();
@@ -787,10 +947,13 @@
         let tilt = 0;
         if (p.onGround && run.state === 'playing') y -= Math.abs(Math.sin(run.clock * 13)) * 4;
         if (!p.onGround) tilt = clamp(-p.vy * 0.00018, -0.14, 0.14);
+        // A skin's `scale` enlarges it around the feet, so it still stands on the ground.
+        const skin = skinById(Progress.data.selected);
+        const drawn = size * ((skin && skin.scale) || 1);
         ctx.save();
         ctx.translate(CONFIG.PLAYER_X + size / 2, y + size / 2);
         ctx.rotate(tilt);
-        drawSprite(img.gorilla, -size / 2, -size / 2, size, '#333');
+        drawSprite(skinSprite(skin), -drawn / 2, def.feet * (size - drawn) - size / 2, drawn, '#333');
         ctx.restore();
     }
 
@@ -921,8 +1084,21 @@
         else if (run.state === 'paused') resume();
     }
 
+    // Add this run's bananas and distance to the player's bank (once per run). An abandoned
+    // run still keeps its bananas, though it never counts toward records.
+    function bankRun() {
+        if (run.banked) return;
+        run.banked = true;
+        Progress.bank(meters(), run.bananas);
+    }
+
+    function purchasableIds() {
+        return SKINS.filter((skin) => Progress.canBuy(skin)).map((skin) => skin.id);
+    }
+
     function goToMenu() {
         if (run.result) Records.commitEntry(run.result, dom.nameInput.value);
+        bankRun();
         run.state = 'menu';
         run.result = null;
         stopLoop();
@@ -940,7 +1116,10 @@
         input.reset();
         dom.pauseBtn.classList.add('hidden');
         if (navigator.vibrate) { try { navigator.vibrate(120); } catch { /* unsupported */ } }
+        const before = purchasableIds();
         run.result = Records.finishRun(meters(), run.bananas);
+        bankRun();
+        run.result.newSkins = purchasableIds().filter((id) => !before.includes(id));
     }
 
     function showResults() {
@@ -954,6 +1133,11 @@
         dom.resMostBananas.textContent = numberFormat.format(rec.mostBananas);
         setOverlay(dom.resDistanceBadge, r.newDistance);
         setOverlay(dom.resBananasBadge, r.newBananas);
+        dom.resWallet.textContent = '+' + numberFormat.format(r.bananas) + ' banked · Bank 🍌 ' +
+            numberFormat.format(Progress.data.bananas);
+        const names = r.newSkins.map((id) => skinById(id).name);
+        dom.resUnlocks.textContent = names.length ? 'You can now buy: ' + names.join(', ') + '! Visit Skins.' : '';
+        setOverlay(dom.resUnlocks, names.length > 0);
 
         const onBoard = r.boardDistance || r.boardBananas;
         setOverlay(dom.entry, onBoard);
@@ -983,6 +1167,106 @@
         dom.menuBest.textContent = rec.bestDistance || rec.mostBananas
             ? 'Best ' + numberFormat.format(rec.bestDistance) + ' m  ·  🍌 ' + numberFormat.format(rec.mostBananas)
             : '';
+        dom.skinsBtnWallet.textContent = numberFormat.format(Progress.data.bananas);
+    }
+
+    // =====================================================================
+    // Skins screen
+    // =====================================================================
+
+    function showSkins() {
+        renderSkins();
+        showScreen('skins');
+    }
+
+    function requirementText(skin) {
+        const parts = [];
+        if (skin.bestRun && Records.data.bestDistance < skin.bestRun) {
+            parts.push({ text: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run',
+                have: Records.data.bestDistance, need: skin.bestRun });
+        }
+        if (skin.totalRun && Progress.data.totalMeters < skin.totalRun) {
+            parts.push({ text: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total',
+                have: Progress.data.totalMeters, need: skin.totalRun });
+        }
+        return parts;
+    }
+
+    function renderSkins() {
+        const bank = Progress.data.bananas;
+        dom.skinsWallet.textContent = numberFormat.format(bank);
+        dom.skinsGrid.textContent = '';
+        for (const skin of SKINS) {
+            const owned = Progress.owns(skin);
+            const equipped = owned && Progress.data.selected === skin.id;
+            const goals = owned ? [] : requirementText(skin);
+            const locked = goals.length > 0;
+
+            const card = document.createElement('div');
+            card.className = 'skin-card' + (equipped ? ' equipped' : '') + (locked ? ' locked' : '');
+
+            const thumb = document.createElement('canvas');
+            thumb.className = 'skin-thumb';
+            thumb.width = thumb.height = 160;
+            const sprite = skinSprite(skin);
+            if (sprite) {
+                const g = thumb.getContext('2d');
+                if (locked) g.globalAlpha = 0.4;
+                g.drawImage(sprite, 0, 0, 160, 160);
+            }
+
+            const name = document.createElement('div');
+            name.className = 'skin-name';
+            name.textContent = skin.name;
+            card.append(thumb, name);
+
+            for (const goal of goals) {
+                const req = document.createElement('div');
+                req.className = 'skin-req';
+                req.textContent = '🔒 ' + goal.text;
+                const bar = document.createElement('div');
+                bar.className = 'skin-bar';
+                const fill = document.createElement('span');
+                fill.style.width = Math.min(100, (goal.have / goal.need) * 100).toFixed(1) + '%';
+                bar.appendChild(fill);
+                const count = document.createElement('div');
+                count.className = 'skin-count';
+                count.textContent = numberFormat.format(goal.have) + ' / ' + numberFormat.format(goal.need) + ' m';
+                card.append(req, bar, count);
+            }
+
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-small';
+            btn.dataset.id = skin.id;
+            if (equipped) {
+                btn.textContent = 'Equipped';
+                btn.disabled = true;
+            } else if (owned) {
+                btn.textContent = 'Equip';
+            } else {
+                btn.textContent = '🍌 ' + numberFormat.format(skin.price);
+                btn.disabled = locked || bank < skin.price;
+                if (!btn.disabled) btn.classList.add('btn-primary');
+                if (!locked && bank < skin.price) {
+                    const short = document.createElement('div');
+                    short.className = 'skin-req';
+                    short.textContent = 'Need ' + numberFormat.format(skin.price - bank) + ' more';
+                    card.appendChild(short);
+                }
+            }
+            card.appendChild(btn);
+            dom.skinsGrid.appendChild(card);
+        }
+    }
+
+    function onSkinButton(e) {
+        const btn = e.target.closest('button[data-id]');
+        if (!btn || btn.disabled) return;
+        const skin = skinById(btn.dataset.id);
+        if (!skin) return;
+        if (Progress.owns(skin)) Progress.select(skin);
+        else Progress.buy(skin);
+        renderSkins();
     }
 
     function showRecords() {
@@ -1020,6 +1304,9 @@
         dom.startBtn.addEventListener('click', startGame);
         dom.recordsBtn.addEventListener('click', showRecords);
         dom.recordsBackBtn.addEventListener('click', () => { refreshMenu(); showScreen('menu'); });
+        dom.skinsBtn.addEventListener('click', showSkins);
+        dom.skinsBackBtn.addEventListener('click', () => { refreshMenu(); showScreen('menu'); });
+        dom.skinsGrid.addEventListener('click', onSkinButton);
         dom.pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
         dom.pauseBtn.addEventListener('click', () => { blurActive(); togglePause(); });
         dom.resumeBtn.addEventListener('click', resume);
@@ -1113,6 +1400,7 @@
     function boot() {
         dom.version.textContent = 'v' + CONFIG.VERSION;
         Records.load();
+        Progress.load();
         refreshMenu();
         setupButtons();
         setupInput();
@@ -1126,7 +1414,7 @@
             dom.startBtn.textContent = 'Start';
         });
         if (/[?&]debug\b/.test(location.search)) {
-            window.HaRUNbeDebug = { run, view, sky, input, records: () => Records.data };
+            window.HaRUNbeDebug = { run, view, sky, input, records: () => Records.data, progress: () => Progress.data };
         }
     }
 

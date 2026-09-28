@@ -28,6 +28,7 @@
         <h1 class="visually-hidden">HaRUNbe</h1>
         <div class="menu-panel">
             <button id="start-btn" class="btn btn-primary" disabled>Loading…</button>
+            <button id="skins-btn" class="btn">Skins <span class="btn-wallet">🍌 <span id="skins-btn-wallet">0</span></span></button>
             <button id="records-btn" class="btn">Records</button>
             <p id="menu-best" class="menu-best"></p>
             <p class="portrait-hint">Best played in landscape</p>
@@ -63,6 +64,18 @@
                 </div>
             </div>
             <button id="records-back-btn" class="btn">Back</button>
+        </div>
+    </section>
+
+    <!-- Skins -->
+    <section id="skins-screen" class="screen" aria-label="Skins">
+        <div class="panel skins-panel">
+            <div class="skins-header">
+                <h2>Skins</h2>
+                <div class="hud-pill wallet-pill" aria-label="Banked bananas">🍌 <span id="skins-wallet">0</span></div>
+            </div>
+            <div id="skins-grid" class="skins-grid"></div>
+            <button id="skins-back-btn" class="btn">Back</button>
         </div>
     </section>
 
@@ -103,6 +116,8 @@
                     </div>
                 </div>
                 <p class="bests">Best distance <strong id="res-best-distance">0 m</strong> · Most bananas <strong id="res-most-bananas">0</strong></p>
+                <p id="res-wallet" class="bests"></p>
+                <p id="res-unlocks" class="unlocks hidden"></p>
                 <div id="leaderboard-entry" class="entry hidden">
                     <p id="entry-text"></p>
                     <div class="entry-row">
@@ -129,6 +144,7 @@
 </div>
 
 <script src="engine.js"></script>
+<script src="skins.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
