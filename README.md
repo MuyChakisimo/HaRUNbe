@@ -45,7 +45,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Skins screen in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.1.1'` → `'3.1.2'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.2.0'` → `'3.2.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -107,3 +107,4 @@ progress bar for each goal it's missing.
 | `sw.js` | Offline support (service worker). |
 | `tools/make-skin.ps1` | Turns a picture into a skin sprite. |
 | `tools/fairness-test.js` | `node tools/fairness-test.js` checks that every enemy group can be cleared. Run it after changing difficulty. |
+| `tools/density-report.js` | `node tools/density-report.js` prints how many enemies arrive per second at each stage of a run. |

@@ -26,6 +26,10 @@
         skinsBackBtn: $('skins-back-btn'),
         skinsWallet: $('skins-wallet'),
         skinsGrid: $('skins-grid'),
+        skinsPager: $('skins-pager'),
+        skinsPageText: $('skins-page'),
+        skinsPrev: $('skins-prev'),
+        skinsNext: $('skins-next'),
         resWallet: $('res-wallet'),
         resUnlocks: $('res-unlocks'),
         menuBest: $('menu-best'),
@@ -370,6 +374,7 @@
         }
         duskGradient = null;
         needsRender = true;
+        if (dom.screens.skins.classList.contains('active')) renderSkins(); // re-fit the cards
         updateOrientationUI();
         if (loopRunning()) return;
         if (run.state !== 'menu') requestLoop();
@@ -1174,88 +1179,144 @@
     // Skins screen
     // =====================================================================
 
+    let skinsPage = 0;
+    const compactFormat = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+    // Narrowest comfortable card and tallest a card may grow, in CSS pixels. The shortest card
+    // is measured from a real card, so it always matches the current fonts and screen size.
+    const CARD_MIN_W = 190, CARD_MAX_H = 140;
+
     function showSkins() {
+        skinsPage = 0;
+        showScreen('skins'); // visible first, so the grid can be measured
         renderSkins();
-        showScreen('skins');
     }
 
-    function requirementText(skin) {
-        const parts = [];
+    // The first distance goal the player still has to reach, or null.
+    function nextGoal(skin) {
         if (skin.bestRun && Records.data.bestDistance < skin.bestRun) {
-            parts.push({ text: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run',
-                have: Records.data.bestDistance, need: skin.bestRun });
+            return { label: '1 run', have: Records.data.bestDistance, need: skin.bestRun,
+                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run' };
         }
         if (skin.totalRun && Progress.data.totalMeters < skin.totalRun) {
-            parts.push({ text: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total',
-                have: Progress.data.totalMeters, need: skin.totalRun });
+            return { label: 'Total', have: Progress.data.totalMeters, need: skin.totalRun,
+                full: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total, over all runs' };
         }
-        return parts;
+        return null;
     }
 
-    function renderSkins() {
+    function buildSkinCard(skin, goal) {
         const bank = Progress.data.bananas;
-        dom.skinsWallet.textContent = numberFormat.format(bank);
-        dom.skinsGrid.textContent = '';
-        for (const skin of SKINS) {
-            const owned = Progress.owns(skin);
-            const equipped = owned && Progress.data.selected === skin.id;
-            const goals = owned ? [] : requirementText(skin);
-            const locked = goals.length > 0;
+        const owned = Progress.owns(skin);
+        const equipped = owned && Progress.data.selected === skin.id;
 
-            const card = document.createElement('div');
-            card.className = 'skin-card' + (equipped ? ' equipped' : '') + (locked ? ' locked' : '');
+        const card = document.createElement('div');
+        card.className = 'skin-card' + (equipped ? ' equipped' : '') + (goal ? ' locked' : '');
 
-            const thumb = document.createElement('canvas');
-            thumb.className = 'skin-thumb';
-            thumb.width = thumb.height = 160;
-            const sprite = skinSprite(skin);
-            if (sprite) {
-                const g = thumb.getContext('2d');
-                if (locked) g.globalAlpha = 0.4;
-                g.drawImage(sprite, 0, 0, 160, 160);
-            }
+        const thumb = document.createElement('canvas');
+        thumb.className = 'skin-thumb';
+        thumb.width = thumb.height = 160;
+        const sprite = skinSprite(skin);
+        if (sprite) {
+            const g = thumb.getContext('2d');
+            if (goal) g.globalAlpha = 0.4;
+            g.drawImage(sprite, 0, 0, 160, 160);
+        }
 
-            const name = document.createElement('div');
-            name.className = 'skin-name';
-            name.textContent = skin.name;
-            card.append(thumb, name);
+        const info = document.createElement('div');
+        info.className = 'skin-info';
+        const name = document.createElement('div');
+        name.className = 'skin-name';
+        name.textContent = skin.name;
+        const status = document.createElement('div');
+        status.className = 'skin-status';
+        info.append(name, status);
 
-            for (const goal of goals) {
-                const req = document.createElement('div');
-                req.className = 'skin-req';
-                req.textContent = '🔒 ' + goal.text;
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-small';
+        btn.dataset.id = skin.id;
+        if (equipped) {
+            status.textContent = 'Equipped';
+            btn.textContent = 'Equipped';
+            btn.disabled = true;
+        } else if (owned) {
+            status.textContent = 'Owned';
+            btn.textContent = 'Equip';
+        } else {
+            btn.textContent = '🍌 ' + numberFormat.format(skin.price);
+            btn.disabled = !!goal || bank < skin.price;
+            if (!btn.disabled) btn.classList.add('btn-primary');
+            if (goal) {
+                status.textContent = '🔒 ' + goal.label + ': ' + compactFormat.format(goal.have) +
+                    '/' + compactFormat.format(goal.need) + ' m';
+                card.title = goal.full;
                 const bar = document.createElement('div');
                 bar.className = 'skin-bar';
                 const fill = document.createElement('span');
                 fill.style.width = Math.min(100, (goal.have / goal.need) * 100).toFixed(1) + '%';
                 bar.appendChild(fill);
-                const count = document.createElement('div');
-                count.className = 'skin-count';
-                count.textContent = numberFormat.format(goal.have) + ' / ' + numberFormat.format(goal.need) + ' m';
-                card.append(req, bar, count);
-            }
-
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-small';
-            btn.dataset.id = skin.id;
-            if (equipped) {
-                btn.textContent = 'Equipped';
-                btn.disabled = true;
-            } else if (owned) {
-                btn.textContent = 'Equip';
+                info.appendChild(bar);
+            } else if (bank < skin.price) {
+                status.textContent = 'Need ' + numberFormat.format(skin.price - bank) + ' more';
             } else {
-                btn.textContent = '🍌 ' + numberFormat.format(skin.price);
-                btn.disabled = locked || bank < skin.price;
-                if (!btn.disabled) btn.classList.add('btn-primary');
-                if (!locked && bank < skin.price) {
-                    const short = document.createElement('div');
-                    short.className = 'skin-req';
-                    short.textContent = 'Need ' + numberFormat.format(skin.price - bank) + ' more';
-                    card.appendChild(short);
-                }
+                status.textContent = 'Ready to buy';
             }
-            card.appendChild(btn);
-            dom.skinsGrid.appendChild(card);
+        }
+        info.appendChild(btn);
+        card.append(thumb, info);
+        return card;
+    }
+
+    // Pick columns/rows so every card fits on screen; extra skins go onto further pages.
+    function layoutSkins() {
+        const grid = dom.skinsGrid;
+        const gap = parseFloat(getComputedStyle(grid).rowGap) || 10;
+
+        // Measure the tallest kind of card (locked, with a progress bar) at its natural height.
+        grid.textContent = '';
+        grid.style.setProperty('--cols', 1);
+        grid.style.setProperty('--rows', 1);
+        grid.style.setProperty('--row-h', 'auto');
+        const probe = buildSkinCard({ id: '__probe', name: 'Probe', price: 1, image: SKINS[0].image },
+            { label: 'Total', have: 1, need: 2, full: '' });
+        probe.querySelector('.skin-thumb').style.height = '40px';
+        grid.appendChild(probe);
+        const minH = Math.ceil(probe.offsetHeight);
+        grid.textContent = '';
+
+        const w = grid.clientWidth, h = grid.clientHeight;
+        const maxCols = Math.max(1, Math.floor((w + gap) / (CARD_MIN_W + gap)));
+        const maxRows = Math.max(1, Math.floor((h + gap) / (minH + gap)));
+        const perPage = maxCols * maxRows;
+        const pages = Math.max(1, Math.ceil(SKINS.length / perPage));
+        const onPage = Math.min(SKINS.length, perPage);
+        const rows = Math.min(maxRows, Math.ceil(onPage / maxCols));
+        const cols = Math.ceil(onPage / rows); // balance the rows (e.g. 4 + 4 rather than 5 + 3)
+        const rowH = Math.max(minH, Math.min(CARD_MAX_H, (h - gap * (rows - 1)) / rows));
+        grid.style.setProperty('--cols', cols);
+        grid.style.setProperty('--rows', rows);
+        grid.style.setProperty('--row-h', Math.floor(rowH) + 'px');
+        // Thumbnail: as tall as the card allows, but never more than ~40% of its width.
+        const cardW = (w - gap * (cols - 1)) / cols;
+        grid.style.setProperty('--thumb', Math.floor(Math.min(rowH - 10, cardW * 0.4)) + 'px');
+        return { perPage, pages };
+    }
+
+    function renderSkins() {
+        dom.skinsWallet.textContent = numberFormat.format(Progress.data.bananas);
+        let { perPage, pages } = layoutSkins();
+        if (pages > 1 !== !dom.skinsPager.classList.contains('hidden')) {
+            // Showing/hiding the pager can change the header height (it wraps on narrow
+            // screens), so lay out again with the pager in its final state.
+            setOverlay(dom.skinsPager, pages > 1);
+            ({ perPage, pages } = layoutSkins());
+            setOverlay(dom.skinsPager, pages > 1);
+        }
+        skinsPage = clamp(skinsPage, 0, pages - 1);
+        dom.skinsPageText.textContent = (skinsPage + 1) + '/' + pages;
+        dom.skinsPrev.disabled = skinsPage === 0;
+        dom.skinsNext.disabled = skinsPage === pages - 1;
+        for (const skin of SKINS.slice(skinsPage * perPage, (skinsPage + 1) * perPage)) {
+            dom.skinsGrid.appendChild(buildSkinCard(skin, Progress.owns(skin) ? null : nextGoal(skin)));
         }
     }
 
@@ -1307,6 +1368,8 @@
         dom.skinsBtn.addEventListener('click', showSkins);
         dom.skinsBackBtn.addEventListener('click', () => { refreshMenu(); showScreen('menu'); });
         dom.skinsGrid.addEventListener('click', onSkinButton);
+        dom.skinsPrev.addEventListener('click', () => { skinsPage--; renderSkins(); });
+        dom.skinsNext.addEventListener('click', () => { skinsPage++; renderSkins(); });
         dom.pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
         dom.pauseBtn.addEventListener('click', () => { blurActive(); togglePause(); });
         dom.resumeBtn.addEventListener('click', resume);

@@ -279,6 +279,15 @@ h3 {
 
 .results-panel { min-width: min(28rem, calc(100vw - 24px)); }
 
+.results-body,
+.results-stats,
+.results-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
 .results-grid {
     display: flex;
     gap: 14px;
@@ -329,6 +338,7 @@ h3 {
     color: var(--muted);
 }
 .bests strong { color: var(--text); }
+.bests:empty { display: none; }
 
 .entry p { margin: 0 0 6px; }
 
@@ -340,6 +350,7 @@ h3 {
 
 #name-input {
     width: 12rem;
+    min-width: 0;
     padding: 8px 10px;
     font: 1.1rem var(--font);
     text-align: center;
@@ -356,6 +367,28 @@ h3 {
     justify-content: center;
 }
 
+.unlocks {
+    margin: 0;
+    font-weight: bold;
+    color: var(--banana);
+}
+
+/* --- Shared header for the Records and Skins screens --------------------- */
+
+.screen-header {
+    display: flex;
+    flex-wrap: wrap;           /* narrow portrait screens: the pager moves to its own line */
+    align-items: center;
+    gap: 6px 10px;
+    width: 100%;
+}
+
+.screen-header h2 { flex: 1 0 auto; }
+
+.screen-header .pager { margin-left: auto; }
+
+.back-btn { min-width: 0; flex: none; }
+
 /* --- Records screen ----------------------------------------------------- */
 
 #records-screen {
@@ -367,7 +400,7 @@ h3 {
 
 .records-panel { width: min(40rem, calc(100vw - 24px)); }
 
-.record-cards, .boards {
+.boards {
     display: flex;
     gap: 14px;
     width: 100%;
@@ -380,18 +413,44 @@ h3 {
     text-align: left;
 }
 
+.board .record-card {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    margin-bottom: 8px;
+    padding: 6px 12px;
+}
+
+.board .record-value { font-size: 1.5rem; }
+
 .board ol {
     margin: 0;
-    padding-left: 1.6em;
+    padding: 0;
+    list-style: none;
+    counter-reset: rank;
 }
 
 .board li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     padding: 3px 0;
+    counter-increment: rank;
 }
 
-.board li .name { display: inline-block; min-width: 7rem; }
-.board li .value { float: right; font-weight: bold; color: var(--banana); }
-.board li.empty { list-style: none; margin-left: -1.6em; color: var(--muted); }
+.board li::before {
+    content: counter(rank) ".";
+    min-width: 1.4em;
+    text-align: right;
+    color: var(--muted);
+}
+
+.board li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board li .value { font-weight: bold; color: var(--banana); white-space: nowrap; }
+.board li.empty { color: var(--muted); }
+.board li.empty::before { content: none; }
 
 /* --- Skins screen ------------------------------------------------------- */
 
@@ -402,14 +461,12 @@ h3 {
     padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
-.skins-panel { width: min(56rem, calc(100vw - 24px)); }
-
-.skins-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    flex-wrap: wrap;
+/* The panel always fills the screen height, and game.js sizes the cards to fit inside it:
+   pages (‹ ›) appear instead of a scrollbar when there are more skins than fit. */
+.skins-panel {
+    width: min(60rem, calc(100vw - 24px));
+    height: min(40rem, calc(100% - 24px));
+    overflow: hidden;
 }
 
 .wallet-pill { pointer-events: none; }
@@ -420,46 +477,81 @@ h3 {
     color: var(--banana);
 }
 
+.pager {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pager-btn { min-width: 2.4rem; padding: 0.2em 0.5em; }
+
+.pager-text {
+    min-width: 2.4rem;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+}
+
 .skins-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 0;
     width: 100%;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--rows, 2), var(--row-h, 1fr));
+    align-content: center;
 }
 
 .skin-card {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 10px 8px;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 5px 8px;
+    overflow: hidden;
+    text-align: left;
     background: rgba(255, 255, 255, 0.08);
-    border: 3px solid transparent;
     border-radius: 14px;
 }
 
-.skin-card.equipped { border-color: var(--banana); background: rgba(255, 225, 53, 0.14); }
+.skin-card.equipped { box-shadow: inset 0 0 0 3px var(--banana); background: rgba(255, 225, 53, 0.14); }
 
 .skin-thumb {
-    width: 88px;
-    height: 88px;
+    flex: none;
+    width: var(--thumb, 64px);
+    height: var(--thumb, 64px);
+}
+
+.skin-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.2;
+}
+
+.skin-name, .skin-status {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .skin-name {
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
 }
 
 .skin-card.locked .skin-name { color: var(--muted); }
 
-.skin-req {
-    font-size: 0.8rem;
+.skin-status {
+    font-size: 0.78rem;
     color: var(--muted);
 }
 
 .skin-bar {
-    width: 85%;
-    height: 7px;
+    height: 5px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 999px;
@@ -471,18 +563,27 @@ h3 {
     background: var(--banana);
 }
 
-.skin-count {
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
+.skin-card .btn {
+    min-width: 0;
+    min-height: 1.9rem;
+    padding: 0.15em 0.6em;
+    font-size: 0.95rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-.skin-card .btn { margin-top: auto; min-width: 7rem; }
+/* --- Short landscape screens: two-column results ------------------------- */
 
-.unlocks {
-    margin: 0;
-    font-weight: bold;
-    color: var(--banana);
+@media (orientation: landscape) and (max-height: 560px) {
+    .results-panel { min-width: 0; width: min(46rem, calc(100vw - 24px)); }
+    .results-body { flex-direction: row; align-items: center; gap: 18px; width: 100%; }
+    .results-stats, .results-actions { flex: 1 1 0; min-width: 0; gap: 8px; }
+    .results-grid { flex-wrap: nowrap; gap: 8px; width: 100%; }
+    .result { flex: 1; min-width: 0; padding: 6px 8px; }
+    .entry { width: 100%; }
+    .entry-row { width: 100%; }
+    #name-input { flex: 1; width: auto; }
+    .button-row { flex-wrap: nowrap; gap: 8px; width: 100%; }
+    .button-row .btn { flex: 1; min-width: 0; padding-left: 0.5em; padding-right: 0.5em; }
 }
 
 /* --- Rotate prompt ------------------------------------------------------ */
@@ -551,6 +652,7 @@ h3 {
     .menu-panel { flex-direction: column; flex-wrap: nowrap; }
     .menu-panel .btn { min-width: 14rem; }
     .portrait-hint { display: block; }
+    .skins-panel { height: calc(100% - 24px); padding: 14px; }
     h2 { font-size: 2rem; }
 }
 
@@ -564,10 +666,38 @@ h3 {
     .record-value { font-size: 1.5rem; }
     .result, .record-card { padding: 6px 12px; }
     .hud-pill { font-size: 1.1rem; padding: 4px 12px; }
-    .skins-grid { grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 8px; }
-    .skin-thumb { width: 64px; height: 64px; }
-    .skin-card { padding: 6px; }
+    .skins-grid { gap: 6px; }
+    .skin-card { padding: 3px 6px; }
+    .skin-card .btn { min-height: 1.75rem; }
+    .board li { padding: 1px 0; }
+    .board .record-card { margin-bottom: 4px; padding: 3px 10px; }
+    .board .record-value { font-size: 1.2rem; }
+    .board h3 { margin-bottom: 2px; }
+    .screen-header h2 { font-size: 1.5rem; }
+    .screen-header .btn { min-height: 2.1rem; }
+    .screen-header .hud-pill { padding: 2px 12px; }
     #countdown-text { font-size: 6rem; }
+}
+
+/* --- Very short screens (phones in landscape, browser bars showing) ------ */
+
+@media (max-height: 380px) {
+    .btn { min-height: 2.2rem; }
+    .btn-small { min-height: 1.9rem; font-size: 0.9rem; }
+    .skin-card .btn { min-height: 1.7rem; font-size: 0.85rem; }
+    h2 { font-size: 1.45rem; }
+    h3 { font-size: 0.95rem; }
+    .panel { padding: 8px 14px; gap: 6px; max-height: calc(100% - 12px); }
+    .record-value { font-size: 1.3rem; }
+    .record-label { font-size: 0.75rem; }
+    .result, .record-card { padding: 4px 10px; }
+    .badge { font-size: 0.7rem; padding: 1px 8px; }
+    .bests, .entry p, .unlocks { font-size: 0.9rem; }
+    #name-input { padding: 5px 8px; font-size: 1rem; }
+    .board li { font-size: 0.9rem; padding: 0; }
+    .skin-name { font-size: 0.95rem; }
+    .skin-status { font-size: 0.72rem; }
+    .skins-panel { height: calc(100% - 12px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

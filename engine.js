@@ -15,7 +15,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.1.1',
+        VERSION: '3.2.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -40,14 +40,16 @@
             rampMeters: 1600   // speed (and difficulty) approaches the cap exponentially over distance
         },
 
-        // Spacing between obstacle clusters. A gap is never shorter than minGap() (so the next
-        // cluster is always fair), plus random "slack" that shrinks as the run gets harder.
-        // Less slack = enemies arrive more often.
+        // How crowded the run gets. A gap is never shorter than minGap() (so the next cluster is
+        // always fair), plus random "slack" that shrinks as the run gets harder. Less slack =
+        // enemies arrive more often. Big multi-enemy patterns also become more common (see
+        // `lateWeight` in PATTERNS). tools/density-report.js prints the resulting enemies/second.
         spawn: {
-            slackStart: 0.8,     // seconds of extra random spacing at the start of a run
-            slackEnd: 0.1,       // ... and far into a run
-            breatherStart: 0.14, // chance of an extra-long relaxing gap at the start
-            breatherEnd: 0.05,   // ... and far into a run
+            rampMeters: 1000,    // crowding ramps up over this distance (faster than speed does)
+            slackStart: 0.7,     // seconds of extra random spacing at the start of a run
+            slackEnd: 0,         // ... and far into a run
+            breatherStart: 0.12, // chance of an extra-long relaxing gap at the start
+            breatherEnd: 0.02,   // ... and far into a run
             breatherSeconds: 0.9 // how much longer a breather gap is
         },
 
@@ -111,6 +113,12 @@
 
     function speedFor(distanceUnits) {
         return lerp(CONFIG.speed.start, CONFIG.speed.max, difficultyFor(distanceUnits));
+    }
+
+    // Same shape as difficultyFor, on the spawn ramp: how crowded the world is.
+    function crowdingFor(distanceUnits) {
+        const meters = Math.max(0, distanceUnits) / CONFIG.UNITS_PER_METER;
+        return 1 - Math.exp(-meters / CONFIG.spawn.rampMeters);
     }
 
     // ---------------------------------------------------------------- player physics
@@ -381,26 +389,32 @@
     // ---------------------------------------------------------------- patterns
 
     // Each pattern is a cluster of obstacles cleared by a single jump (or by staying down).
-    // `from` = metres before the pattern can appear, `weight` = relative frequency.
+    // `from` = metres before the pattern can appear. `weight` = relative frequency at the start
+    // of a run, `lateWeight` = relative frequency far into a run (it shifts gradually with the
+    // spawn ramp), so single enemies give way to bigger groups as the run goes on.
     const PATTERNS = [
-        { name: 'tiger', from: 0, weight: 10,
+        { name: 'tiger', from: 0, weight: 10, lateWeight: 3,
             build: (x) => [makeTiger(x)] },
-        { name: 'hawkHigh', from: 80, weight: 4,           // stay on the ground and let it pass
+        { name: 'hawkHigh', from: 80, weight: 4, lateWeight: 2,     // stay on the ground and let it pass
             build: (x, r) => [makeHawk(x, lerp(100, 116, r()))] },
-        { name: 'hawkLow', from: 180, weight: 4,           // a short hop clears it
+        { name: 'hawkLow', from: 180, weight: 4, lateWeight: 2,     // a short hop clears it
             build: (x, r) => [makeHawk(x, lerp(12, 24, r()))] },
-        { name: 'hawkMid', from: 350, weight: 3,           // needs a held (higher) jump
+        { name: 'hawkMid', from: 350, weight: 3, lateWeight: 2,     // needs a held (higher) jump
             build: (x, r) => [makeHawk(x, lerp(44, 58, r()))] },
-        { name: 'tigerPair', from: 600, weight: 3,         // two tigers: hold a little longer
+        { name: 'tigerPair', from: 500, weight: 3, lateWeight: 5,   // two tigers: hold a little longer
             build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 84, r()))] },
-        { name: 'hawkLowPair', from: 800, weight: 2,       // two low hawks in a row: one long jump
+        { name: 'hawkLowPair', from: 700, weight: 2, lateWeight: 4, // two low hawks in a row: one long jump
             build: (x, r) => [makeHawk(x, lerp(12, 22, r())), makeHawk(x + lerp(70, 90, r()), lerp(12, 22, r()))] },
-        { name: 'tigerUnderHawk', from: 1000, weight: 2,   // short hop only: a high hawk follows
+        { name: 'tigerUnderHawk', from: 900, weight: 2, lateWeight: 3, // short hop only: a high hawk follows
             build: (x, r) => [makeTiger(x), makeHawk(x + lerp(150, 175, r()), lerp(104, 116, r()))] },
-        { name: 'tigerThenHawk', from: 1300, weight: 2,    // a tiger with a low hawk right behind it
+        { name: 'tigerThenHawk', from: 1100, weight: 2, lateWeight: 4, // a tiger with a low hawk right behind it
             build: (x, r) => [makeTiger(x), makeHawk(x + lerp(80, 100, r()), lerp(14, 26, r()))] },
-        { name: 'tigerTrio', from: 1700, weight: 1,        // full-height jump
-            build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 70, r())), makeTiger(x + lerp(130, 140, r()))] }
+        { name: 'tigerTrio', from: 1400, weight: 1, lateWeight: 4,  // full-height jump
+            build: (x, r) => [makeTiger(x), makeTiger(x + lerp(62, 70, r())), makeTiger(x + lerp(130, 140, r()))] },
+        { name: 'tigerHawkTiger', from: 1800, weight: 1, lateWeight: 3, // tiger, low hawk, tiger: full jump
+            build: (x, r) => [makeTiger(x), makeHawk(x + lerp(66, 74, r()), lerp(14, 22, r())), makeTiger(x + lerp(136, 146, r()))] },
+        { name: 'tigerQuad', from: 2400, weight: 1, lateWeight: 3,  // four tigers: a perfectly timed full jump
+            build: (x, r) => [makeTiger(x), makeTiger(x + lerp(60, 66, r())), makeTiger(x + lerp(122, 130, r())), makeTiger(x + lerp(184, 194, r()))] }
     ];
 
     // Minimum ground distance between clusters: enough to land from any jump that cleared the
@@ -422,13 +436,17 @@
         };
     }
 
-    function pickPattern(gen, meters) {
+    function patternWeight(p, crowd) {
+        return lerp(p.weight, p.lateWeight === undefined ? p.weight : p.lateWeight, crowd);
+    }
+
+    function pickPattern(gen, meters, crowd) {
         let total = 0;
-        for (const p of PATTERNS) if (meters >= p.from) total += p.weight;
+        for (const p of PATTERNS) if (meters >= p.from) total += patternWeight(p, crowd);
         let r = gen.rng() * total;
         for (const p of PATTERNS) {
             if (meters < p.from) continue;
-            r -= p.weight;
+            r -= patternWeight(p, crowd);
             if (r <= 0) return p;
         }
         return PATTERNS[0];
@@ -446,13 +464,13 @@
         const x = gen.cursor;
         const distance = x - CONFIG.PLAYER_X;
         const s = speedFor(distance);
-        const diff = difficultyFor(distance);
+        const crowd = crowdingFor(distance);
         const meters = distance / CONFIG.UNITS_PER_METER;
 
         // Choose a pattern whose instance is verifiably clearable at this speed.
         let obstacles = null, win = null;
         for (let attempt = 0; attempt < 4 && !obstacles; attempt++) {
-            const pattern = attempt < 3 ? pickPattern(gen, meters) : PATTERNS[0];
+            const pattern = attempt < 3 ? pickPattern(gen, meters, crowd) : PATTERNS[0];
             const list = pattern.build(x, r);
             const w = bestWindow(hitboxes(list), s, { enough: CONFIG.fairness.minWindow, pressStep: 1 / 120 });
             if (w && w.seconds >= CONFIG.fairness.minWindow) { obstacles = list; win = w; }
@@ -469,9 +487,9 @@
 
         // Space out the next cluster. Slack shrinks with difficulty but never below minGap.
         const SP = CONFIG.spawn;
-        const slack = lerp(SP.slackStart, SP.slackEnd, diff);
+        const slack = lerp(SP.slackStart, SP.slackEnd, crowd);
         let gap = minGap(s) + s * slack * r();
-        if (r() < lerp(SP.breatherStart, SP.breatherEnd, diff)) gap += s * SP.breatherSeconds;
+        if (r() < lerp(SP.breatherStart, SP.breatherEnd, crowd)) gap += s * SP.breatherSeconds;
         gen.prevObstacles = obstacles;
         gen.prevEnd = b.x1;
         gen.cursor = b.x1 + gap;
@@ -552,7 +570,7 @@
     const api = {
         CONFIG, SPRITES,
         clamp, lerp, mulberry32,
-        difficultyFor, speedFor,
+        difficultyFor, speedFor, crowdingFor,
         createPlayer, pressJump, stepPlayer,
         makeBox, playerBox, overlaps,
         makeTiger, makeHawk, makeBanana,

@@ -78,12 +78,16 @@
   | high hawk | 80 m | stay on the ground |
   | low hawk | 180 m | short hop |
   | mid hawk | 350 m | held jump |
-  | tiger pair | 600 m | a slightly longer hold |
-  | two low hawks | 800 m | one long jump |
-  | tiger then high hawk | 1,000 m | short hop only |
-  | tiger then low hawk | 1,300 m | long held jump |
-  | tiger trio | 1,700 m | full jump |
+  | tiger pair | 500 m | a slightly longer hold |
+  | two low hawks | 700 m | one long jump |
+  | tiger then high hawk | 900 m | short hop only |
+  | tiger then low hawk | 1,100 m | long held jump |
+  | tiger trio | 1,400 m | full jump |
+  | tiger, low hawk, tiger | 1,800 m | full jump |
+  | four tigers | 2,400 m | perfectly timed full jump |
 
+  Each pattern has a `weight` (how common it is at the start of a run) and a `lateWeight` (how common far into a run). Single enemies give way to big groups as the run goes on.
+- **Crowding.** `CONFIG.spawn` sets how fast the world fills up (`rampMeters`, faster than the speed ramp) and the random extra spacing between groups. `node tools/density-report.js` prints the resulting enemies per second at each stage of a run (about 0.5/s at the start and 1.4/s after three minutes).
 - **Fairness.** Every instance is checked when it is generated and needs at least 70 ms of timing slack.
 - **Bananas.** They sit in three height tiers (ground, short hop, held jump) or on arcs traced along a real clearing jump. Each one is checked to be reachable, and the landing afterwards leaves 0.24 s before the next hazard.
 - **Skins.** Defined in `skins.js` (name, price, distance goals, image or recolour). Bananas from every run are banked in `harunbe.progress.v1` and spent in the Skins screen. Skins are cosmetic; the hitbox never changes.

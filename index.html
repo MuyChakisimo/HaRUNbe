@@ -41,41 +41,46 @@
 
     <!-- Records -->
     <section id="records-screen" class="screen" aria-label="Records">
-        <div class="panel records-panel">
-            <h2>Records</h2>
-            <div class="record-cards">
-                <div class="record-card">
-                    <span class="record-label">Best distance</span>
-                    <span id="rec-best-distance" class="record-value">0 m</span>
-                </div>
-                <div class="record-card">
-                    <span class="record-label">Most bananas</span>
-                    <span id="rec-most-bananas" class="record-value">0</span>
-                </div>
+        <div class="panel fit-panel records-panel">
+            <div class="screen-header">
+                <button id="records-back-btn" class="btn btn-small back-btn" aria-label="Back">‹ Back</button>
+                <h2>Records</h2>
             </div>
             <div class="boards">
                 <div class="board">
+                    <div class="record-card">
+                        <span class="record-label">Best distance</span>
+                        <span id="rec-best-distance" class="record-value">0 m</span>
+                    </div>
                     <h3>Top 5 distances</h3>
                     <ol id="rec-distance-list"></ol>
                 </div>
                 <div class="board">
+                    <div class="record-card">
+                        <span class="record-label">Most bananas</span>
+                        <span id="rec-most-bananas" class="record-value">0</span>
+                    </div>
                     <h3>Top 5 banana hauls</h3>
                     <ol id="rec-banana-list"></ol>
                 </div>
             </div>
-            <button id="records-back-btn" class="btn">Back</button>
         </div>
     </section>
 
     <!-- Skins -->
     <section id="skins-screen" class="screen" aria-label="Skins">
-        <div class="panel skins-panel">
-            <div class="skins-header">
+        <div class="panel fit-panel skins-panel">
+            <div class="screen-header">
+                <button id="skins-back-btn" class="btn btn-small back-btn" aria-label="Back">‹ Back</button>
                 <h2>Skins</h2>
                 <div class="hud-pill wallet-pill" aria-label="Banked bananas">🍌 <span id="skins-wallet">0</span></div>
+                <div id="skins-pager" class="pager hidden">
+                    <button id="skins-prev" class="btn btn-small pager-btn" aria-label="Previous page">‹</button>
+                    <span id="skins-page" class="pager-text">1/1</span>
+                    <button id="skins-next" class="btn btn-small pager-btn" aria-label="Next page">›</button>
+                </div>
             </div>
             <div id="skins-grid" class="skins-grid"></div>
-            <button id="skins-back-btn" class="btn">Back</button>
         </div>
     </section>
 
@@ -103,31 +108,37 @@
         <div id="results-overlay" class="overlay hidden">
             <div class="panel results-panel">
                 <h2>Run Over</h2>
-                <div class="results-grid">
-                    <div class="result">
-                        <span class="record-label">Distance</span>
-                        <span id="res-distance" class="record-value">0 m</span>
-                        <span id="res-distance-badge" class="badge hidden">NEW RECORD!</span>
+                <div class="results-body">
+                    <div class="results-stats">
+                        <div class="results-grid">
+                            <div class="result">
+                                <span class="record-label">Distance</span>
+                                <span id="res-distance" class="record-value">0 m</span>
+                                <span id="res-distance-badge" class="badge hidden">NEW RECORD!</span>
+                            </div>
+                            <div class="result">
+                                <span class="record-label">Bananas</span>
+                                <span id="res-bananas" class="record-value">0</span>
+                                <span id="res-bananas-badge" class="badge hidden">NEW RECORD!</span>
+                            </div>
+                        </div>
+                        <p class="bests">Best distance <strong id="res-best-distance">0 m</strong> · Most bananas <strong id="res-most-bananas">0</strong></p>
+                        <p id="res-wallet" class="bests"></p>
                     </div>
-                    <div class="result">
-                        <span class="record-label">Bananas</span>
-                        <span id="res-bananas" class="record-value">0</span>
-                        <span id="res-bananas-badge" class="badge hidden">NEW RECORD!</span>
+                    <div class="results-actions">
+                        <p id="res-unlocks" class="unlocks hidden"></p>
+                        <div id="leaderboard-entry" class="entry hidden">
+                            <p id="entry-text"></p>
+                            <div class="entry-row">
+                                <input type="text" id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" enterkeyhint="done">
+                                <button id="save-name-btn" class="btn btn-small">Save</button>
+                            </div>
+                        </div>
+                        <div class="button-row">
+                            <button id="restart-btn" class="btn btn-primary">Restart</button>
+                            <button id="results-menu-btn" class="btn">Main Menu</button>
+                        </div>
                     </div>
-                </div>
-                <p class="bests">Best distance <strong id="res-best-distance">0 m</strong> · Most bananas <strong id="res-most-bananas">0</strong></p>
-                <p id="res-wallet" class="bests"></p>
-                <p id="res-unlocks" class="unlocks hidden"></p>
-                <div id="leaderboard-entry" class="entry hidden">
-                    <p id="entry-text"></p>
-                    <div class="entry-row">
-                        <input type="text" id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" enterkeyhint="done">
-                        <button id="save-name-btn" class="btn btn-small">Save</button>
-                    </div>
-                </div>
-                <div class="button-row">
-                    <button id="restart-btn" class="btn btn-primary">Restart</button>
-                    <button id="results-menu-btn" class="btn">Main Menu</button>
                 </div>
             </div>
         </div>
