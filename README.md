@@ -12,40 +12,57 @@ A skin is a single entry in [`skins.js`](skins.js). There are two kinds:
 ### Option A: a skin with new artwork
 
 **1. Get the picture ready.**
-It should show the character side-on and facing **right**. The background should be either
-transparent or solid pure black, which is how most AI image tools export.
+It should show the character side-on and facing **right**. PNG or JPG both work. The
+background should be one of:
+
+- **transparent** (PNG),
+- **solid black**, or
+- **solid white**, which is common for JPGs.
 
 **2. Turn it into a sprite.**
-From the project folder, run:
+From the project folder, run the line that matches your picture's background:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\to\picture.png -Name PirateGorilla
+# Black background
+powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\to\picture.png -Name NinjaGorilla
+
+# White background
+powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\to\picture.jpg -Name NinjaGorilla -Background White
+
+# Already transparent
+powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\to\picture.png -Name NinjaGorilla -KeepBackground
 ```
 
 The script:
 
-- removes the black background (add `-KeepBackground` if the picture is already transparent),
+- removes the background,
 - crops the character, scales it to the gorilla's size and stands it on the same ground line,
-- saves `Assets\Player\256x256PirateGorilla.png` (used by the game) and
-  `Assets\Player\PirateGorilla.png` (a full-size copy to keep as source art),
+- saves `Assets\Player\256x256NinjaGorilla.png` (used by the game) and
+  `Assets\Player\NinjaGorilla.png` (a full-size copy to keep as source art),
 - tells you what `scale` to use if the character is much shorter than the gorilla.
 
-Open the 256x256 file and check it. If specks of background are left, run the script again
-with a higher `-Threshold`, such as `-Threshold 10`. If the character's dark outline gets eaten
-away, use a lower value.
+Open the 256x256 file and check it:
+
+- **Patches of background trapped inside the character**, such as inside a sword's hand
+  guard or between an arm and the body: run it again with `-FillHoles` added. It only clears
+  large, flat patches of pure background colour, so white clothing is kept.
+- **Specks of background left around the edge:** run it again with a higher `-Threshold`, for
+  example `-Threshold 10` for black backgrounds (the default is 3) or `-Threshold 60` for white
+  ones (the default is 40).
+- **The character's outline or pale parts get eaten away:** use a lower `-Threshold`.
 
 **3. Add it to `skins.js`.**
 Add a line to the `SKINS` list:
 
 ```js
-{ id: 'pirate', name: 'Pirate', price: 400, bestRun: 1000,
-    image: 'Assets/Player/256x256PirateGorilla.png' },
+{ id: 'ninja', name: 'Ninja', price: 400, bestRun: 1000,
+    image: 'Assets/Player/256x256NinjaGorilla.png' },
 ```
 
 Skins appear in the Skins screen in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.2.0'` → `'3.2.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.4.0'` → `'3.4.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 

@@ -29,16 +29,24 @@
             recolor: { fur: '#9aa1a8' } },
         { id: 'yeti', name: 'Yeti', price: 150, bestRun: 400,
             recolor: { fur: '#eef3f7', skin: '#8ec5e8' } },
+        { id: 'tie', name: 'Big Tie', price: 200, bestRun: 500,
+            image: 'Assets/Player/256x256TieGorilla.png' },
         { id: 'miku', name: 'Miku', price: 300, bestRun: 800,
             image: 'Assets/Player/256x256MikuGorilla.png' },
         { id: 'lava', name: 'Lava', price: 450, bestRun: 1500,
             recolor: { fur: '#4a1510', skin: '#ff6a1f' } },
         { id: 'toxic', name: 'Toxic', price: 700, totalRun: 15000,
             recolor: { fur: '#1d3b2a', skin: '#8dff4f' } },
+        { id: 'pirate', name: 'Pirate', price: 800, bestRun: 1200,
+            image: 'Assets/Player/256x256PirateGorilla.png' },
         { id: 'golden', name: 'Golden', price: 1500, bestRun: 3000,
             recolor: { fur: '#c8921a', skin: '#fff0a0' } },
         { id: 'racer', name: 'Racer', price: 1000, bestRun: 2000,
-            image: 'Assets/Player/256x256RaceCarGorilla.png', scale: 1.25 }
+            image: 'Assets/Player/256x256RaceCarGorilla.png', scale: 1.25 },
+        { id: 'samurai', name: 'Samurai', price: 2000, bestRun: 3500,
+            image: 'Assets/Player/256x256SamuraiGorilla.png' },
+        { id: 'robopirate', name: 'Robo Pirate', price: 2500, bestRun: 4000,
+            image: 'Assets/Player/256x256RoboPirateGorilla.png' }
     ];
 
     for (const skin of SKINS) if (!skin.image) skin.image = DEFAULT_IMAGE;

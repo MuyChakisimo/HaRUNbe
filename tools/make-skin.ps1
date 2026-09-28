@@ -2,9 +2,11 @@
     Turns a character picture into a HaRUNbe skin sprite (Windows PowerShell, no installs needed).
 
       powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\picture.png -Name RaceCarGorilla
+      powershell -ExecutionPolicy Bypass -File tools\make-skin.ps1 -Source C:\path\picture.jpg -Name PirateGorilla -Background White
 
-    - Makes a solid pure-black background transparent (skip with -KeepBackground if the
-      picture is already a transparent PNG).
+    - Makes a solid black background transparent. Use -Background White for pictures on a
+      white background (typical for JPGs), or -KeepBackground if the picture is already a
+      transparent PNG. Add -FillHoles to also clear background trapped inside the character.
     - Crops to the character, scales it to fit the gorilla's 256x256 box and stands it on the
       same ground line as the default gorilla.
     - Writes Assets\Player\256x256<Name>.png (used by the game) and Assets\Player\<Name>.png
@@ -14,8 +16,10 @@
 param(
     [Parameter(Mandatory = $true)][string]$Source,
     [Parameter(Mandatory = $true)][string]$Name,
-    [int]$Threshold = 3,          # background pixels must be at least this dark (0-255) to be removed
-    [switch]$KeepBackground
+    [ValidateSet('Black', 'White')][string]$Background = 'Black',
+    [int]$Threshold = -1,         # how far (0-255) a pixel may be from the background colour and still be removed
+    [switch]$KeepBackground,
+    [switch]$FillHoles            # also remove background trapped inside the character (e.g. in a sword guard)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,11 +58,15 @@ public static class HarunbeSkinTool {
     }
 
     static int Max(int c) { return Math.Max((c >> 16) & 255, Math.Max((c >> 8) & 255, c & 255)); }
+    static int Min(int c) { return Math.Min((c >> 16) & 255, Math.Min((c >> 8) & 255, c & 255)); }
 
-    // Flood-fill near-black pixels from the picture's border and make them transparent.
+    // How far a pixel is from the background colour (0 = exactly the background).
+    static int Dist(int c, bool white) { return white ? 255 - Min(c) : Max(c); }
+
+    // Flood-fill background-coloured pixels from the picture's border and make them transparent.
     // Dark pixels inside the character (outlines, tyres) are untouched because the fill
     // can't reach them through the outline.
-    public static Bitmap Cut(Bitmap src, int threshold, bool keep) {
+    public static Bitmap Cut(Bitmap src, int threshold, bool keep, bool white, bool fillHoles) {
         int w, h;
         var a = Pixels(src, out w, out h);
         if (keep) return FromPixels(a, w, h);
@@ -66,15 +74,22 @@ public static class HarunbeSkinTool {
         var q = new Queue<int>();
         for (int x = 0; x < w; x++) { q.Enqueue(x); q.Enqueue((h - 1) * w + x); }
         for (int y = 0; y < h; y++) { q.Enqueue(y * w); q.Enqueue(y * w + w - 1); }
-        while (q.Count > 0) {
-            int i = q.Dequeue();
-            if (bg[i] || Max(a[i]) > threshold) continue;
-            bg[i] = true;
-            int x = i % w, y = i / w;
-            if (x > 0) q.Enqueue(i - 1);
-            if (x < w - 1) q.Enqueue(i + 1);
-            if (y > 0) q.Enqueue(i - w);
-            if (y < h - 1) q.Enqueue(i + w);
+        Fill(a, w, h, bg, q, threshold, white, null);
+
+        // Background trapped inside the character (e.g. inside a sword guard) can't be reached
+        // from the border. Remove enclosed patches that are big and almost exactly the
+        // background colour; smaller or shaded ones (a white shirt, highlights) are kept.
+        if (fillHoles) {
+            var seen = (bool[])bg.Clone();
+            for (int s = 0; s < w * h; s++) {
+                if (seen[s] || Dist(a[s], white) > threshold) continue;
+                var region = new List<int>();
+                q.Enqueue(s);
+                Fill(a, w, h, seen, q, threshold, white, region);
+                long sum = 0;
+                foreach (int i in region) sum += Dist(a[i], white);
+                if (region.Count >= 40 && sum <= 6L * region.Count) foreach (int i in region) bg[i] = true;
+            }
         }
         var o = new int[w * h];
         for (int i = 0; i < w * h; i++) {
@@ -82,10 +97,25 @@ public static class HarunbeSkinTool {
             int x = i % w, y = i / w;
             bool edge = (x > 0 && bg[i - 1]) || (x < w - 1 && bg[i + 1]) || (y > 0 && bg[i - w]) || (y < h - 1 && bg[i + w]);
             int alpha = (a[i] >> 24) & 255;
-            if (edge) alpha = Math.Min(alpha, 120 + Max(a[i]) * 8); // soften the cut edge
+            if (edge) alpha = Math.Min(alpha, 120 + Dist(a[i], white) * 8); // soften the cut edge
             o[i] = (alpha << 24) | (a[i] & 0xFFFFFF);
         }
         return FromPixels(o, w, h);
+    }
+
+    // Flood fill from the queued pixels through background-coloured pixels, marking `mark`.
+    static void Fill(int[] a, int w, int h, bool[] mark, Queue<int> q, int threshold, bool white, List<int> region) {
+        while (q.Count > 0) {
+            int i = q.Dequeue();
+            if (mark[i] || Dist(a[i], white) > threshold) continue;
+            mark[i] = true;
+            if (region != null) region.Add(i);
+            int x = i % w, y = i / w;
+            if (x > 0) q.Enqueue(i - 1);
+            if (x < w - 1) q.Enqueue(i + 1);
+            if (y > 0) q.Enqueue(i - w);
+            if (y < h - 1) q.Enqueue(i + w);
+        }
     }
 
     // Bounding box of clearly visible pixels: x, y, width, height.
@@ -122,7 +152,9 @@ $FIT_W = 244; $FIT_H = 225; $FEET_Y = 241; $CENTER_X = 128
 $HITBOX_TOP_Y = 0.17 * 256   # top of the gameplay hitbox inside the sprite (see SPRITES in engine.js)
 
 $src = New-Object System.Drawing.Bitmap (Resolve-Path $Source).Path
-$cut = [HarunbeSkinTool]::Cut($src, $Threshold, [bool]$KeepBackground)
+$white = $Background -eq 'White'
+if ($Threshold -lt 0) { $Threshold = if ($white) { 40 } else { 3 } } # JPG whites are noisier than pure black
+$cut = [HarunbeSkinTool]::Cut($src, $Threshold, [bool]$KeepBackground, $white, [bool]$FillHoles)
 $src.Dispose()
 $cut.Save($full, [System.Drawing.Imaging.ImageFormat]::Png)
 
