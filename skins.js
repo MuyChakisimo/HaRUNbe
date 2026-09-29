@@ -5,7 +5,9 @@
  *   name      Shown in the Skins screen.
  *   price     Cost in banked bananas. 0 = free and owned from the start.
  *   bestRun   Optional. Metres the player must reach in a single run before it can be bought.
- *   totalRun  Optional. Lifetime metres (all runs added together) before it can be bought.
+ *   totalRun  Optional. Metres the player must run in total (all runs added together).
+ *             For skins added after a player started playing, both goals only count runs
+ *             made after the skin arrived: past runs never unlock a new skin straight away.
  *   image     Optional. A 256x256 PNG with a transparent background, drawn in the same pose and
  *             position as Assets/Player/256x256DefaultGorilla.png. Defaults to that image.
  *   scale     Optional. Draws the skin bigger (e.g. 1.25) while keeping it on the ground. Use it
@@ -39,6 +41,12 @@
             recolor: { fur: '#1d3b2a', skin: '#8dff4f' } },
         { id: 'pirate', name: 'Pirate', price: 800, bestRun: 1800,
             image: 'Assets/Player/256x256PirateGorilla.png' },
+        { id: 'spiky', name: 'Spiky', price: 900, bestRun: 2500,
+            image: 'Assets/Player/256x256SpikyGorilla.png' },
+        { id: 'ninja', name: 'Ninja', price: 1100, bestRun: 2800,
+            image: 'Assets/Player/256x256NinjaGorilla.png' },
+        { id: 'strawhat', name: 'Straw Hat', price: 1300, bestRun: 3200,
+            image: 'Assets/Player/256x256StrawHatGorilla.png' },
         { id: 'golden', name: 'Golden', price: 1500, bestRun: 3500,
             recolor: { fur: '#c8921a', skin: '#fff0a0' } },
         { id: 'racer', name: 'Racer', price: 1000, bestRun: 2700,

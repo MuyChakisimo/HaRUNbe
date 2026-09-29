@@ -76,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.6.0'` → `'3.6.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.7.0'` → `'3.7.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -113,8 +113,16 @@ the versions (step 4).
 | `recolor` | no | `{ fur: '#hex', skin: '#hex' }` repaints the image. |
 | `scale` | no | Draws the skin bigger while keeping it on the ground, for example `1.25` for the Racer. |
 
+**New skins start from zero.** When you add a skin, players who already have a save only
+count runs made *after* the skin arrives. For example, a new skin with `bestRun: 1500` needs a
+fresh 1,500 m run, even if the player's record is 4,000 m. The same goes for `totalRun`: only
+metres run since the skin arrived count. Brand-new players are unaffected, because all their
+runs come after every skin. The 12 skins that existed before this rule (up to Robo Pirate)
+keep counting every past run, so nobody lost progress. On a locked card, "New run" means the
+player's record already beats the goal but they need to do it again.
+
 If a skin has both `bestRun` and `totalRun`, the player needs both. A locked skin shows a
-progress bar for each goal it's missing.
+progress bar for the next goal it still needs.
 
 ## Good to know
 

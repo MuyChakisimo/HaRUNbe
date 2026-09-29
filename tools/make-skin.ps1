@@ -88,7 +88,10 @@ public static class HarunbeSkinTool {
                 Fill(a, w, h, seen, q, threshold, white, region);
                 long sum = 0;
                 foreach (int i in region) sum += Dist(a[i], white);
-                if (region.Count >= 40 && sum <= 6L * region.Count) foreach (int i in region) bg[i] = true;
+                // "Almost exactly": on average within a third of the threshold (a fake
+                // grey-and-white checkerboard still counts; shaded white clothing doesn't).
+                long flat = Math.Max(6, threshold / 3);
+                if (region.Count >= 40 && sum <= flat * region.Count) foreach (int i in region) bg[i] = true;
             }
         }
         var o = new int[w * h];

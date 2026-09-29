@@ -207,10 +207,14 @@
 
     const Progress = (function () {
         const KEY = 'harunbe.progress.v1';
+        // Skins that existed before per-skin goals (v3.7). For players who already had a save,
+        // their goals keep counting every past run, so nobody loses progress they had.
+        const LEGACY_SKINS = ['classic', 'silverback', 'yeti', 'tie', 'miku', 'lava', 'toxic',
+            'pirate', 'golden', 'racer', 'samurai', 'robopirate'];
         let data = blank();
 
         function blank() {
-            return { version: 1, bananas: 0, totalMeters: 0, owned: [], selected: SKINS[0].id, powerups: {} };
+            return { version: 1, bananas: 0, totalMeters: 0, owned: [], selected: SKINS[0].id, powerups: {}, goals: {} };
         }
 
         function count(v) { return Math.max(0, Math.floor(Number(v) || 0)); }
@@ -227,8 +231,49 @@
                 if (stored.powerups && typeof stored.powerups === 'object') {
                     for (const p of POWER.list) data.powerups[p.id] = Math.min(POWER.max, count(stored.powerups[p.id]));
                 }
+                if (stored.goals && typeof stored.goals === 'object') {
+                    for (const id of Object.keys(stored.goals)) {
+                        const g = stored.goals[id];
+                        if (g === null) data.goals[id] = null; // counts every past run (see startGoals)
+                        else if (g && typeof g === 'object') data.goals[id] = { best: count(g.best), start: count(g.start) };
+                    }
+                }
             }
             if (!owns(skinById(data.selected))) data.selected = SKINS[0].id;
+            if (startGoals(stored)) save();
+        }
+
+        // A skin the player hasn't seen before starts its own goal tracker now: its distance
+        // goals only count runs from this moment on (the best single run since, and the
+        // metres run since). So a new skin with a lower goal than the player's record still
+        // has to be earned. A `null` entry marks an older skin that counts every past run.
+        function startGoals(stored) {
+            // A save from before per-skin goals, or a player from before the Shop existed
+            // (records but no progress save yet).
+            const oldSave = (stored && typeof stored === 'object' && !stored.goals) ||
+                (!stored && Records.data.bestDistance > 0);
+            let added = false;
+            for (const skin of SKINS) {
+                if (!(skin.bestRun || skin.totalRun) || skin.id in data.goals) continue;
+                data.goals[skin.id] = oldSave && LEGACY_SKINS.includes(skin.id)
+                    ? null
+                    : { best: 0, start: data.totalMeters };
+                added = true;
+            }
+            return added;
+        }
+
+        // How far the player has got toward a skin's goals.
+        function goalProgress(skin) {
+            const g = data.goals[skin.id];
+            if (!g) return { best: Records.data.bestDistance, total: data.totalMeters, fresh: false };
+            return { best: g.best, total: Math.max(0, data.totalMeters - g.start), fresh: true };
+        }
+
+        // A finished run counts toward every skin's "best single run since it arrived".
+        function noteFinishedRun(meters) {
+            for (const g of Object.values(data.goals)) if (g) g.best = Math.max(g.best, count(meters));
+            save();
         }
 
         function save() {
@@ -239,8 +284,8 @@
 
         // The distance goals a skin needs before it can be bought.
         function requirementsMet(skin) {
-            return (!skin.bestRun || Records.data.bestDistance >= skin.bestRun) &&
-                (!skin.totalRun || data.totalMeters >= skin.totalRun);
+            const p = goalProgress(skin);
+            return (!skin.bestRun || p.best >= skin.bestRun) && (!skin.totalRun || p.total >= skin.totalRun);
         }
 
         function canBuy(skin) {
@@ -289,7 +334,7 @@
         }
 
         return {
-            load, owns, requirementsMet, canBuy, buy, select, bank,
+            load, owns, requirementsMet, canBuy, buy, select, bank, goalProgress, noteFinishedRun,
             powerCount, canBuyPower, buyPower, usePower,
             get data() { return data; }
         };
@@ -1565,6 +1610,7 @@
         if (navigator.vibrate) { try { navigator.vibrate(120); } catch { /* unsupported */ } }
         const before = purchasableIds();
         run.result = Records.finishRun(meters(), run.bananas);
+        Progress.noteFinishedRun(meters());
         bankRun();
         run.result.newSkins = purchasableIds().filter((id) => !before.includes(id));
     }
@@ -1623,7 +1669,7 @@
 
     let skinsPage = 0;
     let shopTab = 'skins'; // 'skins' | 'powerups'
-    const compactFormat = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+    const compactFormat = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 });
     // Narrowest comfortable card and tallest a card may grow, in CSS pixels. The shortest card
     // is measured from a real card, so it always matches the current fonts and screen size.
     const CARD_MIN_W = 190, CARD_MAX_H = 140;
@@ -1679,13 +1725,17 @@
 
     // The first distance goal the player still has to reach, or null.
     function nextGoal(skin) {
-        if (skin.bestRun && Records.data.bestDistance < skin.bestRun) {
-            return { label: '1 run', have: Records.data.bestDistance, need: skin.bestRun,
-                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run' };
+        const p = Progress.goalProgress(skin);
+        const since = p.fresh ? ' (runs since this skin was added)' : '';
+        if (skin.bestRun && p.best < skin.bestRun) {
+            // "New run" when the player's all-time record already beats the goal.
+            const label = p.fresh && Records.data.bestDistance >= skin.bestRun ? 'New run' : '1 run';
+            return { label, have: p.best, need: skin.bestRun,
+                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run' + since };
         }
-        if (skin.totalRun && Progress.data.totalMeters < skin.totalRun) {
-            return { label: 'Total', have: Progress.data.totalMeters, need: skin.totalRun,
-                full: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total, over all runs' };
+        if (skin.totalRun && p.total < skin.totalRun) {
+            return { label: 'Total', have: p.total, need: skin.totalRun,
+                full: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total' + since };
         }
         return null;
     }
