@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!--
+    HaRUNbe page layout. Each <section class="screen"> is one screen; only one is shown at a
+    time (game.js showScreen). Overlays (pause, results, install guide, rotate prompt) sit on top.
+      #menu-screen      main menu (Start / Shop / Records / Install)
+      #install-overlay  Add to Home Screen guide
+      #records-screen   records and Top 5 lists
+      #skins-screen     the Shop (Skins and Power-ups tabs)
+      #game-screen      the canvas, HUD, power-up bar, pause / countdown / results overlays
+    Element ids here are used by game.js (see its DOM section); rename them in both places.
+    Scripts load in order: engine.js (rules) -> skins.js + powerups.js (catalogs) -> game.js.
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">

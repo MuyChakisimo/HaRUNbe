@@ -1,6 +1,43 @@
 /*
  * HaRUNbe — browser front end: assets, input, game loop, rendering, UI, records, PWA.
- * Game rules and physics live in engine.js.
+ * Game rules and physics live in engine.js; the skin and power-up lists live in skins.js
+ * and powerups.js.
+ *
+ * FILE MAP (search for the "=====" section headers)
+ *   DOM ................... every page element the code uses (ids from index.html)
+ *   Assets ................ image paths and loading (Start waits only for what a run needs)
+ *   Records ............... best distance / most bananas / Top 5 lists (localStorage)
+ *   Progress .............. banked bananas, owned skins, power-ups, per-skin goals (localStorage)
+ *   Skin sprites .......... recolouring skins; Effect sprites: tints and glows
+ *   View / canvas sizing .. how the world fits any screen (resize)
+ *   Run state ............. everything about the current run (the `run` object)
+ *   Input ................. touch, mouse and keyboard
+ *   Game loop ............. fixed 240 Hz simulation, drawn every frame (frame, stepPlaying)
+ *   Power-ups ............. activating and running Shield / Magnet / Double / Head start
+ *   Day / night cycle ..... sky phase, sun and moon
+ *   Rendering ............. everything drawn on the canvas, back to front (render)
+ *   Bonus stages .......... BONUS! banner and golden glow
+ *   HUD ................... banana and distance counters
+ *   Flow .................. start, pause, countdown, death, results screen, menus
+ *   Skins screen .......... the Shop (skins + power-ups tabs), card layout and paging
+ *   Orientation ........... rotate prompt, fullscreen, landscape lock
+ *   Install ............... Install button and Add to Home Screen guide
+ *   PWA / Boot ............ service worker registration and start-up
+ *
+ * WHERE TO EDIT
+ *   Colours of sky / hills / ground ... COLORS (Rendering)
+ *   Enemy tints, banana glow .......... Effect sprites
+ *   How long death / countdown take ... DIE_DURATION, COUNTDOWN_TICK
+ *   Power-up effects .................. Power-ups section (numbers are in powerups.js)
+ *   Shop card sizes ................... CARD_MIN_W / CARD_MAX_H (Skins screen)
+ *   Saved data format ................. Records / Progress (keep old saves loading!)
+ *
+ * PERFORMANCE NOTES
+ *   - The DOM (HUD, power-up buttons) is only touched when a shown value changes; the
+ *     canvas does all per-frame drawing.
+ *   - Recoloured skins, tints and glows are drawn once into canvases and reused.
+ *   - Entities live in one array that is compacted in place (cullEntities): no garbage per frame.
+ *   - The world is generated at most one enemy group per frame, well ahead of the screen.
  */
 (function () {
     'use strict';
@@ -90,20 +127,39 @@
         skyDay: 'Assets/Scenery/ClearSky.jpg',
         skyNight: 'Assets/Scenery/StarryNight.jpg'
     };
+    // Loaded images by key: an Image once loaded, null if it failed, undefined while loading.
     const img = {};
     let assetsReady = false;
 
     // A missing image never blocks the game; it is drawn with a simple fallback shape.
-    function loadAssets() {
-        const paths = Object.assign({}, ASSET_PATHS);
-        for (const skin of SKINS) paths['skin:' + skin.image] = skin.image;
-        return Promise.all(Object.keys(paths).map((key) => new Promise((resolve) => {
+    function loadImage(key, src) {
+        return new Promise((resolve) => {
             const im = new Image();
             im.decoding = 'async';
             im.onload = () => { img[key] = im; resolve(); };
             im.onerror = () => { img[key] = null; resolve(); };
-            im.src = paths[key];
-        })));
+            im.src = src;
+        });
+    }
+
+    // Start waits only for what a run needs: scenery, enemies, bananas and the equipped skin.
+    // The other skins load afterwards in the background (they're only needed in the Shop),
+    // so adding more skins never slows down the first start.
+    function loadAssets() {
+        const selected = skinById(Progress.data.selected) || SKINS[0];
+        const core = Object.keys(ASSET_PATHS).map((key) => loadImage(key, ASSET_PATHS[key]));
+        core.push(loadImage('skin:' + selected.image, selected.image));
+        return Promise.all(core);
+    }
+
+    function loadRestOfSkins() {
+        const pending = [];
+        for (const skin of SKINS) {
+            const key = 'skin:' + skin.image;
+            if (key in img || pending.some((p) => p.key === key)) continue;
+            pending.push({ key, src: skin.image });
+        }
+        return Promise.all(pending.map((p) => loadImage(p.key, p.src)));
     }
 
     // =====================================================================
@@ -351,11 +407,14 @@
 
     const skinSprites = {};
 
+    // The image to draw for a skin: its artwork, recoloured if the skin has `recolor`.
     function skinSprite(skin) {
         if (!skin) skin = SKINS[0];
         if (skin.id in skinSprites) return skinSprites[skin.id];
-        const base = img['skin:' + skin.image] || img.gorilla;
-        if (!assetsReady) return base; // don't cache before the images have loaded
+        const loaded = img['skin:' + skin.image];
+        // Still loading: show the default gorilla for now, and don't cache it.
+        if (!assetsReady || loaded === undefined) return loaded || img.gorilla;
+        const base = loaded || img.gorilla; // failed to load: default gorilla
         let sprite = base;
         if (base && skin.recolor) {
             try { sprite = recolor(base, skin.recolor); } catch { sprite = base; } // e.g. file:// pages
@@ -370,6 +429,7 @@
 
     const effectSprites = {};
 
+    // Build an effect image once (after images load) and reuse it every frame.
     function effectSprite(key, build) {
         if (key in effectSprites) return effectSprites[key];
         if (!assetsReady) return null; // don't cache before the images have loaded
@@ -506,6 +566,7 @@
     let duskGradient = null;
     let needsRender = true;
 
+    // Fit the world to the window: canvas size, pixel ratio, and how much sky/ground shows.
     function resize() {
         const cssW = Math.max(1, window.innerWidth);
         const cssH = Math.max(1, window.innerHeight);
@@ -564,6 +625,7 @@
     const popups = []; // "+1" banana pop-ups, reused
     for (let i = 0; i < 8; i++) popups.push({ life: 0, x: 0, y: 0, text: '+1' });
 
+    // Fresh run: reset the player, world generator, power-ups, clouds and HUD.
     function resetRun() {
         run.trackPos = run.prevTrackPos = 0;
         run.distance = 0;
@@ -625,6 +687,7 @@
         if (run.state === 'playing') E.pressJump(run.player);
     }
 
+    // Touch / mouse / keyboard. Tapping or holding anywhere on the canvas jumps.
     function setupInput() {
         const area = dom.canvas;
         area.addEventListener('pointerdown', (e) => {
@@ -702,6 +765,7 @@
         rafId = 0;
     }
 
+    // One animation frame: advance the fixed-step simulation, then draw once.
     function frame(now) {
         rafId = requestAnimationFrame(frame);
         let dt = lastTime < 0 ? 0 : (now - lastTime) / 1000;
@@ -752,6 +816,7 @@
         if (run.state === 'paused' || run.state === 'gameover' || run.state === 'menu') stopLoop();
     }
 
+    // One 1/240 s simulation step while running: move, jump, power-ups, collisions.
     function stepPlaying(dt) {
         run.prevTrackPos = run.trackPos;
         run.prevAlt = run.player.alt;
@@ -771,6 +836,7 @@
 
     const DIE_DURATION = 1.5;
 
+    // After a hit: the world skids to a stop, then the results screen appears.
     function stepDying(dt) {
         run.prevTrackPos = run.trackPos;
         run.prevAlt = run.player.alt;
@@ -788,6 +854,7 @@
     const collectBox = E.makeBox();
     const enemyBox = E.makeBox();
 
+    // Collect bananas the gorilla touches; hitting an enemy ends the run (unless shielded).
     function checkCollisions() {
         E.playerBox(run.player.alt, run.trackPos, playerBox);
         // Bananas are collected with a slightly larger box: generous pickups feel good.
@@ -813,6 +880,7 @@
         }
     }
 
+    // Drop entities (and bonus zones) that are behind the camera, compacting the array in place.
     function cullEntities() {
         const list = run.entities;
         const limit = run.trackPos - CONFIG.cullUnits;
@@ -878,6 +946,7 @@
         return false;
     }
 
+    // Use a power-up now (button or key): once per run, and only if the player has one.
     function activatePower(p) {
         if (run.state !== 'playing' || !powerAvailable(p) || !Progress.usePower(p)) return;
         const pw = run.pw;
@@ -921,6 +990,7 @@
         buildPowerBar();
     }
 
+    // Count down running power-ups each simulation step.
     function stepPowers(dt) {
         const pw = run.pw;
         if (pw.blink > 0) pw.blink = Math.max(0, pw.blink - dt);
@@ -953,6 +1023,7 @@
     // plus the ones currently running (with a timer ring).
     const powerBarState = { warpShown: false, sig: '' };
 
+    // Rebuild the power-up buttons (only when one starts, ends, or becomes unusable).
     function buildPowerBar() {
         const bar = dom.powerBar;
         bar.textContent = '';
@@ -1003,13 +1074,16 @@
         }
     }
 
+    // Timer bars on running power-ups. Only touched when the bar moves by a visible step
+    // (1%), so the page isn't restyled every frame.
     function updatePowerRings() {
         const pw = run.pw;
         for (const btn of dom.powerBar.children) {
             if (!btn.classList.contains('active')) continue;
             const id = btn.dataset.id;
             const left = id === 'magnet' ? pw.magnet / pw.magnetMax : id === 'double' ? pw.double / pw.doubleMax : 1;
-            btn.style.setProperty('--left', left.toFixed(3));
+            const v = left.toFixed(2);
+            if (btn.dataset.left !== v) { btn.dataset.left = v; btn.style.setProperty('--left', v); }
         }
     }
 
@@ -1081,6 +1155,7 @@
 
     const tmpPos = { x: 0, y: 0 };
 
+    // Draw one frame, back to front. `alpha` blends the last two simulation steps for smoothness.
     function render(alpha) {
         const k = view.k;
         const trackPos = lerp(run.prevTrackPos, run.trackPos, alpha);
@@ -1112,6 +1187,7 @@
         ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
     }
 
+    // Day sky, fading into the starry night sky, with a warm glow at dawn and dusk.
     function drawSky() {
         const top = view.top, h = GROUND_Y - top + 4;
         if (img.skyDay) drawCover(img.skyDay, 0, top, view.w, h);
@@ -1136,6 +1212,7 @@
         ctx.globalAlpha = 1;
     }
 
+    // Sun by day, moon by night, each on an arc that sets behind the jungle.
     function drawCelestial() {
         const p = sky.phase;
         // Sun: phase 0..0.5 (slightly extended so it slides in/out behind the jungle).
@@ -1225,6 +1302,7 @@
         ctx.fill();
     }
 
+    // Soil and grass; the tufts and pebbles scroll with the track to sell the speed.
     function drawGround(trackPos) {
         const n = sky.night, w = view.w;
         const bottom = view.top + view.h;
@@ -1266,6 +1344,7 @@
         }
     }
 
+    // Bananas and enemies on screen (anything off screen is skipped).
     function drawEntities(trackPos) {
         const t = run.clock;
         const list = run.entities;
@@ -1439,6 +1518,7 @@
         }
     }
 
+    // The gorilla in its equipped skin, with bob, jump tilt and power-up effects.
     function drawPlayer(alt) {
         const def = SPRITES.gorilla;
         const size = def.size;
@@ -1539,6 +1619,7 @@
         ctx.globalAlpha = 1;
     }
 
+    // Red flash, darkening and the WASTED title after a hit.
     function drawWasted() {
         const t = run.state === 'gameover' ? DIE_DURATION : run.dieTime;
         const flash = Math.max(0, 1 - t / 0.25);
@@ -1572,6 +1653,7 @@
     const numberFormat = new Intl.NumberFormat();
     const hud = { last: { bananas: -1, meters: -1 } };
 
+    // Banana and distance counters; the DOM is only touched when a number changes.
     function updateHud() {
         const pw = run.pw;
         // During the head-start animation the distance counter spins up to the new distance.
@@ -1590,6 +1672,7 @@
     const COUNTDOWN_TICK = 0.75; // seconds per countdown number
     let portraitAccepted = false;
 
+    // Show one screen (menu, records, shop, game) and hide the others.
     function showScreen(name) {
         for (const key of Object.keys(dom.screens)) dom.screens[key].classList.toggle('active', key === name);
         document.body.classList.toggle('in-game', name === 'game');
@@ -1602,6 +1685,7 @@
         if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     }
 
+    // Start (or restart) a run from the menu or the results screen.
     function startGame() {
         if (!assetsReady) return;
         if (run.state !== 'menu' && run.state !== 'gameover') return; // ignore double taps
@@ -1619,6 +1703,7 @@
         updateOrientationUI(); // portrait on a phone: pause behind the rotate prompt
     }
 
+    // Hand control to the player (after start or after the resume countdown).
     function beginPlaying() {
         run.state = 'playing';
         accumulator = 0;
@@ -1628,6 +1713,7 @@
         requestLoop();
     }
 
+    // Pause the run (button, P/Esc, tab switch, rotating the phone...). `reason` says why.
     function pauseFor(reason) {
         if (run.state !== 'playing' && run.state !== 'countdown') return;
         run.state = 'paused';
@@ -1639,6 +1725,7 @@
         requestLoop(); // draws the frozen frame once, then stops
     }
 
+    // Leave the pause with a 3-2-1 countdown.
     function resume() {
         if (run.state !== 'paused' || needsRotate()) return;
         run.state = 'countdown';
@@ -1669,6 +1756,7 @@
         return SKINS.filter((skin) => Progress.canBuy(skin)).map((skin) => skin.id);
     }
 
+    // Back to the main menu; an unfinished run still banks its bananas.
     function goToMenu() {
         if (run.result) Records.commitEntry(run.result, dom.nameInput.value);
         bankRun();
@@ -1683,6 +1771,7 @@
         showScreen('menu');
     }
 
+    // The run ends: save records, bank bananas and distance, note newly buyable skins.
     function die() {
         run.state = 'dying';
         run.dieTime = 0;
@@ -1697,6 +1786,7 @@
         run.result.newSkins = purchasableIds().filter((id) => !before.includes(id));
     }
 
+    // Fill in and show the Run Over screen.
     function showResults() {
         run.state = 'gameover';
         needsRender = true;
@@ -1737,6 +1827,7 @@
         dom.nameInput.blur();
     }
 
+    // Update the best-run line and the banana count on the Shop button.
     function refreshMenu() {
         const rec = Records.data;
         dom.menuBest.textContent = rec.bestDistance || rec.mostBananas
@@ -1822,6 +1913,7 @@
         return null;
     }
 
+    // One Shop card for a skin: thumbnail, name, status/goal and its button.
     function buildSkinCard(skin, goal) {
         const bank = Progress.data.bananas;
         const owned = Progress.owns(skin);
@@ -1922,6 +2014,7 @@
         return { perPage, pages };
     }
 
+    // Draw the current Shop tab and page, sized so every card fits without scrolling.
     function renderSkins() {
         dom.skinsWallet.textContent = numberFormat.format(Progress.data.bananas);
         for (const tab of dom.shopTabs) {
@@ -1949,6 +2042,7 @@
         }
     }
 
+    // Shop button clicks: buy or equip a skin, or buy a power-up.
     function onSkinButton(e) {
         const btn = e.target.closest('button[data-id]');
         if (!btn || btn.disabled) return;
@@ -1965,6 +2059,7 @@
         renderSkins();
     }
 
+    // Fill in and show the Records screen.
     function showRecords() {
         const rec = Records.data;
         dom.recBestDistance.textContent = numberFormat.format(rec.bestDistance) + ' m';
@@ -1996,6 +2091,7 @@
         }
     }
 
+    // Wire up every menu / overlay button.
     function setupButtons() {
         dom.startBtn.addEventListener('click', startGame);
         dom.recordsBtn.addEventListener('click', showRecords);
@@ -2036,6 +2132,7 @@
         return active && coarsePointer.matches && isPortrait() && !portraitAccepted;
     }
 
+    // Phones in portrait during a run: pause behind the rotate prompt.
     function updateOrientationUI() {
         const show = needsRotate();
         dom.rotate.classList.toggle('hidden', !show);
@@ -2208,6 +2305,10 @@
         resetClouds();
         loadAssets().then(() => {
             assetsReady = true;
+            // Then fetch the other skins quietly; refresh the Shop if it's open.
+            loadRestOfSkins().then(() => {
+                if (dom.screens.skins.classList.contains('active')) renderSkins();
+            });
             dom.startBtn.disabled = false;
             dom.startBtn.textContent = 'Start';
         });

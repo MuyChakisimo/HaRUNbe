@@ -2,6 +2,7 @@
   "name": "HaRUNbe",
   "short_name": "HaRUNbe",
   "description": "Run, jump, collect bananas and dodge tigers and hawks in this endless jungle runner.",
+  "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",

@@ -7,7 +7,7 @@
  * - Images are cache-first (they rarely change and are the bulk of the download).
  * - Bump VERSION whenever any file changes; old caches are deleted on activation.
  */
-const VERSION = '3.8.0';
+const VERSION = '3.9.0';
 const CACHE = 'harunbe-' + VERSION;
 
 importScripts('./skins.js'); // skin images are precached straight from the catalog
@@ -50,11 +50,16 @@ for (const skin of self.HarunbeSkins) {
 
 const NETWORK_TIMEOUT_MS = 3500;
 
+// The code files must all be cached or the install fails (the game can't run without them).
+// Images are cached one by one: a single missing image (e.g. a typo in a new skin's path)
+// is just skipped and fetched later, instead of breaking offline play for everyone.
+// cache: 'reload' bypasses the HTTP cache so a new version never precaches stale files.
 self.addEventListener('install', (event) => {
+    const fresh = (url) => new Request(url, { cache: 'reload' });
     event.waitUntil(
         caches.open(CACHE)
-            // cache: 'reload' bypasses the HTTP cache so a new version never precaches stale files.
-            .then((cache) => cache.addAll(CORE.concat(ASSETS).map((url) => new Request(url, { cache: 'reload' }))))
+            .then((cache) => cache.addAll(CORE.map(fresh))
+                .then(() => Promise.all(ASSETS.map((url) => cache.add(fresh(url)).catch(() => { /* fetched on demand */ })))))
             .then(() => self.skipWaiting())
     );
 });

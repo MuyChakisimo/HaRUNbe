@@ -62,9 +62,16 @@
 |---|---|
 | `engine.js` | Pure simulation with no DOM. Configuration, sprite hitboxes, fixed-step jump physics, difficulty, pattern-based world generation, and a fairness solver that replays the real physics. |
 | `game.js` | Browser layer: assets, input, fixed-step game loop with interpolated rendering, drawing, HUD, screens, records, orientation/fullscreen, and service-worker registration. |
+| `skins.js` | Skin catalog: names, prices, distance goals, artwork or recolour. |
+| `powerups.js` | Power-up catalog: prices, durations, keys, the storage cap. |
+| `index.html` / `style.css` | Menus, Shop, HUD and overlays around the canvas. |
 | `sw.js` | Versioned precache. Network-first for code, cache-first for images. |
 | `tools/fairness-test.js` | `node tools/fairness-test.js`. Proves every pattern is clearable at every speed, that consecutive clusters stay fair at the minimum gap, and checks 100 km of generated world. |
 | `tools/browser-test.js` | Playwright end-to-end tests driven by a fake 60/90/120/144 Hz clock. Includes a 5-minute autopilot run. |
+| `tools/density-report.js` | `node tools/density-report.js`. Enemies per second at each stage of a run, plus bonus stages and golden bananas per 5 km. |
+| `tools/make-skin.ps1` | Turns a picture into a 256x256 skin sprite (removes a black / white / fake-checkerboard background). |
+
+Every source file starts with a **file map** (its sections, and where to go for common edits).
 
 ## Gameplay tuning (all in `CONFIG`, `engine.js`)
 
@@ -100,6 +107,35 @@
 - **Skins.** Defined in `skins.js` (name, price, distance goals, image or recolour). Bananas from every run are banked in `harunbe.progress.v1` and spent in the Skins screen. Skins are cosmetic; the hitbox never changes.
 - **Distance.** 50 units = 1 m, counted only during active play.
 - **Day/night.** A 120 s cycle starting in the morning. The sun and moon travel left-to-right arcs and set behind the jungle. The starry sky and the dusk/dawn glow crossfade according to the sun's elevation.
+
+## v3.9 audit (performance and annotations)
+
+Measured with a 4x-slowed CPU (roughly a mid-range phone), 12 s of play with a bonus stage,
+Magnet and Double running:
+
+| | Before | After |
+|---|---|---|
+| Median frame | 13.3 ms (display rate) | 13.3 ms |
+| Page layout + style work | 110 ms per second | 25 ms per second |
+| Worst world-generation step (golden banana search, desktop) | 6.7 ms | 3.5 ms |
+
+Changes:
+- **Power-up timer bars** were restyled every frame, which forced a page layout 75 times a
+  second. They now use a transform and only update in 1% steps.
+- **Golden banana search** uses 1/120 s timing steps (plenty for its 40 ms minimum window) and
+  tries 3 spots instead of 4. Same number of golden bananas, half the worst-case cost.
+- **Faster first start:** Start used to wait for every skin image (about 1 MB, and growing with
+  each new skin). It now waits only for scenery, enemies and the equipped skin; the rest load in
+  the background for the Shop.
+- **Sturdier offline install:** one missing image used to make the whole service-worker install
+  fail (no offline play at all). Code files are still required; images are now cached one by one.
+- **Stable app identity:** `manifest.json` has an `id`, so a future `start_url` change won't
+  make phones treat the game as a different app.
+- **Annotations:** file maps at the top of every file, and one-line comments on the key functions.
+
+Checked and fine: no unused CSS; the fairness test passes; the download is about 2 MB and
+cached for offline play. The ~15 MB of full-size source art in `Assets/` is never downloaded
+by players.
 
 ## Platform limitations
 

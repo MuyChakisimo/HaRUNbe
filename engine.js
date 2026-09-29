@@ -5,6 +5,29 @@
  * world generation, fairness checking and collision. game.js drives it from the
  * browser; tools/fairness-test.js drives it from Node to verify fairness.
  *
+ * FILE MAP (search for the "----- name" divider to jump to a section)
+ *   CONFIG ................ every gameplay number: speed, jump, spawn spacing, bonus stages,
+ *                           golden bananas, fairness margins. Most tuning happens here.
+ *   SPRITES ............... sprite sizes and hitboxes (fractions of the drawn image)
+ *   difficulty ............ difficultyFor / speedFor / crowdingFor: distance -> 0..1 ramps
+ *   player physics ........ jumping, holding, gravity (stepPlayer)
+ *   hitboxes .............. boxes and makeTiger / makeHawk / makeBanana
+ *   moving enemies ........ hopper, pouncer, diving/rising hawk (motionOffset)
+ *   jump trajectories ..... every possible jump, precomputed for the fairness checker
+ *   fairness checker ...... bestWindow: can this group be cleared, and how easily?
+ *   patterns .............. PATTERNS: the enemy groups, when they unlock, how common they are
+ *   world generator ....... generateSegment: picks a group, places bananas, spaces the next one
+ *   bonus stages .......... BONUS_SHAPES and generateBonus
+ *   golden bananas ........ placeGoldenBanana (risky spots, checked to be survivable)
+ *
+ * WHERE TO EDIT
+ *   Faster / slower game ........ CONFIG.speed
+ *   More / fewer enemies ........ CONFIG.spawn, and weight / lateWeight in PATTERNS
+ *   New enemy group ............. add to PATTERNS, then run tools/fairness-test.js
+ *   Jump feel ................... CONFIG.physics (then run the fairness test)
+ *   Bonus stages / golden ....... CONFIG.bonus, CONFIG.golden, BONUS_SHAPES
+ *   After any change here: node tools/fairness-test.js and node tools/density-report.js
+ *
  * Coordinate system ("world units"):
  *   - The playfield is a 540-unit-tall band. The ground surface is at y = GROUND_Y.
  *   - y grows downward (like canvas). Player/obstacle heights use "alt" = units above ground.
@@ -15,7 +38,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.8.0',
+        VERSION: '3.9.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -131,6 +154,7 @@
         return 1 - Math.exp(-meters / CONFIG.speed.rampMeters);
     }
 
+    // Running speed (units/s) at a given distance: CONFIG.speed.start rising toward .max.
     function speedFor(distanceUnits) {
         return lerp(CONFIG.speed.start, CONFIG.speed.max, difficultyFor(distanceUnits));
     }
@@ -191,6 +215,7 @@
 
     function makeBox() { return { x0: 0, x1: 0, y0: 0, y1: 0 }; }
 
+    // The gorilla's hitbox when the camera is at trackPos and it is `alt` units up.
     function playerBox(alt, trackPos, out) {
         out.x0 = trackPos + PHX0;
         out.x1 = trackPos + PHX1;
@@ -400,6 +425,7 @@
         return hitTarget ? 2 : 1;
     }
 
+    // Does this jump touch the obstacle at any step while airborne? (only checks nearby steps)
     function airHits(px, dx, traj, ob) {
         const i0 = Math.max(0, Math.floor((ob.x0 - PHX1 - px) / dx) - 1);
         const i1 = Math.min(traj.steps, Math.ceil((ob.x1 - PHX0 - px) / dx) + 1);
@@ -556,6 +582,7 @@
         return lerp(p.weight, p.lateWeight === undefined ? p.weight : p.lateWeight, crowd);
     }
 
+    // Random enemy group, weighted by how far into the run we are.
     function pickPattern(gen, meters, crowd) {
         let total = 0;
         for (const p of PATTERNS) if (meters >= p.from) total += patternWeight(p, crowd);
@@ -636,6 +663,7 @@
         () => { const out = []; for (let i = 0; i < 9; i++) { const t = i / 8; out.push([i * 50, 40 + 190 * 4 * t * (1 - t)]); } return out; } // arch
     ];
 
+    // Replace the next enemy group with a bonus stage: bananas only, then a clear runway.
     function generateBonus(gen, out, s) {
         const r = gen.rng;
         const x0 = gen.cursor;
@@ -683,9 +711,9 @@
             preGround: s * 0.15,
             postGround: s * CONFIG.fairness.reaction,
             enough: GO.maxWindow + 0.01, // stop early once it's clearly too easy
-            pressStep: 1 / 240
+            pressStep: 1 / 120          // 8 ms steps: plenty for a 40 ms window, and half the work
         };
-        for (const [cx, alt] of spots.slice(0, 4)) {
+        for (const [cx, alt] of spots.slice(0, 3)) {
             const banana = makeGoldenBanana(cx, alt);
             if (!clearOf(banana.hit, neighbours, 4)) continue;
             opts.target = banana.hit;
@@ -704,6 +732,7 @@
         { name: 'high', lo: 185, hi: 250 }      // held jump
     ];
 
+    // A row of bananas in the gap before an enemy group, each checked to be reachable.
     function placeGapBananas(gen, out, from, to, s, neighbours) {
         const r = gen.rng;
         if (r() > 0.6) return;

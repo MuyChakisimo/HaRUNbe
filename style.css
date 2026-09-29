@@ -1,5 +1,17 @@
 /* =========================================================================
    HaRUNbe
+
+   The game itself is drawn on a <canvas> (see game.js); this file styles the menus,
+   HUD and overlays around it. Sections, in order (search for "--- Name"):
+     Screens / Buttons / Main menu / Panels & overlays / Game screen (HUD, pause)
+     Power-up bar / Results / Install guide / Shared header / Records / Shop (Skins screen)
+     Then screen-size rules, which override the above:
+       Short landscape (results in two columns), Rotate prompt, Portrait,
+       Short landscape phones (max-height 430px), Very short screens (max-height 380px)
+
+   Colours and fonts are CSS variables in :root just below, so the whole look can be
+   changed in one place. Keep every screen fitting without scrolling: test at
+   568x300, 740x360 and 390x760 when changing sizes.
    ========================================================================= */
 
 :root {
@@ -344,8 +356,10 @@ h3 {
     left: 0;
     bottom: 0;
     height: 4px;
-    width: calc(var(--left, 1) * 100%);
+    width: 100%;
     background: var(--banana);
+    transform: scaleX(var(--left, 1)); /* a transform, so the bar shrinks without re-layout */
+    transform-origin: left center;
 }
 
 .power-btn.warp { border-color: rgba(140, 200, 255, 0.8); }

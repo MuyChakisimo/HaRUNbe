@@ -76,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.8.0'` → `'3.8.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.9.0'` → `'3.9.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
