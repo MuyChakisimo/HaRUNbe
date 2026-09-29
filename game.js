@@ -319,6 +319,62 @@
         return sprite;
     }
 
+    // =====================================================================
+    // Effect sprites: tinted enemies and glowing bananas (built once, then cached)
+    // =====================================================================
+
+    const effectSprites = {};
+
+    function effectSprite(key, build) {
+        if (key in effectSprites) return effectSprites[key];
+        if (!assetsReady) return null; // don't cache before the images have loaded
+        let sprite = null;
+        try { sprite = build(); } catch { sprite = null; }
+        effectSprites[key] = sprite;
+        return sprite;
+    }
+
+    // Multiply the artwork by `color` (keeps its shading and dark outline), clipped to its shape.
+    function tintSprite(image, color, strength) {
+        const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext('2d');
+        g.drawImage(image, 0, 0, w, h);
+        g.globalCompositeOperation = 'multiply';
+        g.globalAlpha = strength;
+        g.fillStyle = color;
+        g.fillRect(0, 0, w, h);
+        g.globalCompositeOperation = 'destination-in';
+        g.globalAlpha = 1;
+        g.drawImage(image, 0, 0, w, h);
+        return canvas;
+    }
+
+    // Diving and rising hawks: a shade of red. Pouncing tigers: a deeper orange.
+    const glideHawkSprite = () => img.hawk && effectSprite('hawk:glide', () => tintSprite(img.hawk, '#ff4a3a', 0.45));
+    const pounceTigerSprite = () => img.tiger && effectSprite('tiger:pounce', () => tintSprite(img.tiger, '#ff9a2a', 0.4));
+
+    // Banana with a soft yellow glow around its outline. The canvas is padded by
+    // BANANA_GLOW_PAD (a fraction of the sprite size) on every side to leave room for the glow.
+    const BANANA_GLOW_PAD = 0.25;
+    const bananaGlowSprite = () => img.banana && effectSprite('banana:glow', () => {
+        const image = img.banana;
+        const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+        const pad = Math.round(w * BANANA_GLOW_PAD);
+        const canvas = document.createElement('canvas');
+        canvas.width = w + pad * 2;
+        canvas.height = h + pad * 2;
+        const g = canvas.getContext('2d');
+        g.shadowColor = 'rgba(255, 226, 60, 0.95)';
+        g.shadowBlur = w * 0.14;
+        g.drawImage(image, pad, pad, w, h);
+        g.shadowBlur = w * 0.06;              // a second, tighter pass brightens the rim
+        g.drawImage(image, pad, pad, w, h);
+        return canvas;
+    });
+
     function hexRgb(hex) {
         const n = parseInt(String(hex).replace('#', ''), 16);
         return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -1149,7 +1205,14 @@
             const x = e.x - trackPos;
             if (x > maxX || x + e.size < -10 || e.collected) continue;
             if (e.type === 'banana') {
-                drawSprite(img.banana, x, e.top + Math.sin(t * 4 + e.phase) * 3, e.size, '#ffe135');
+                const by = e.top + Math.sin(t * 4 + e.phase) * 3;
+                const glow = bananaGlowSprite();
+                if (glow) {
+                    const pad = e.size * BANANA_GLOW_PAD;
+                    ctx.drawImage(glow, x - pad, by - pad, e.size + pad * 2, e.size + pad * 2);
+                } else {
+                    drawSprite(img.banana, x, by, e.size, '#ffe135');
+                }
             } else if (e.hit.mv) {
                 drawMover(e, x, trackPos, t);
             } else if (e.type === 'tiger') {
@@ -1198,7 +1261,8 @@
             ctx.translate(x + s / 2 + wiggle, feetY + off);
             ctx.rotate(rot);
             ctx.scale(sx, sy);
-            drawSprite(img.tiger, -s / 2, -s * SPRITES.tiger.feet, s, '#f39c12');
+            const sprite = mv.kind === 'pounce' ? (pounceTigerSprite() || img.tiger) : img.tiger;
+            drawSprite(sprite, -s / 2, -s * SPRITES.tiger.feet, s, '#f39c12');
             ctx.restore();
             return;
         }
@@ -1213,7 +1277,7 @@
         ctx.save();
         ctx.translate(x + s / 2, cy);
         ctx.rotate(rot);
-        drawSprite(img.hawk, -s / 2, -s / 2, s, '#7b4a2a');
+        drawSprite(glideHawkSprite() || img.hawk, -s / 2, -s / 2, s, '#7b4a2a');
         ctx.restore();
         if (!done) drawArrow(x + s / 2, heading > 0 ? cy + s * 0.55 : cy - s * 0.55, heading, t);
     }
