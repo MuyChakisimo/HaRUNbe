@@ -76,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.7.0'` → `'3.7.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.8.0'` → `'3.8.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -154,6 +154,18 @@ one. Each power-up can be used once per run, and any you don't press stay in sto
 All of these (prices, durations, keys, the 99 cap and the 60 m head-start window) are in
 [`powerups.js`](powerups.js). A head start's distance counts toward the run, the Top 5 lists and
 skin goals. It skips that stretch's bananas.
+
+## Bonus stages and golden bananas
+
+- **Bonus stages:** after 800 m, an enemy group sometimes turns into a 10-second stretch with
+  no enemies and lots of bananas, announced with a "BONUS!" banner and a golden glow. On
+  average there's one every 1,000–1,500 m. A great time to use Magnet and Double.
+- **Golden bananas (worth 5):** from 1,500 m, placed in risky spots near enemies. The fairness
+  checker makes sure every one can be grabbed and survived, but only with a tight timing window
+  (40–220 ms). Ignoring them is always the safe choice.
+
+Tune both in `CONFIG.bonus` and `CONFIG.golden` in [`engine.js`](engine.js).
+`node tools/density-report.js` shows how often they appear.
 
 ## Project layout
 

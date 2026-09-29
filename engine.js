@@ -15,7 +15,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.7.0',
+        VERSION: '3.8.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -63,6 +63,26 @@
             minBananaWindow: 0.05,  // a banana must be collectable with >= 50 ms of slack
             reaction: 0.24,         // seconds on the ground after landing before the next obstacle
             pressStep: 1 / 240      // resolution of the timing search
+        },
+
+        // Bonus stages: a stretch with no enemies and lots of bananas. After `fromMeters`, each
+        // enemy group has a `chance` of being replaced by one (at least `spacingMeters` apart).
+        bonus: {
+            fromMeters: 800,
+            spacingMeters: 700,
+            chance: 0.04,       // per enemy group; about one bonus every 1,000-1,500 m
+            seconds: 10,        // how long the banana stretch lasts
+            leadOut: 0.8        // extra clear seconds after it, before enemies return
+        },
+
+        // Golden bananas: worth `value` bananas, placed in risky spots near enemies. There is
+        // always a way to grab one and survive, but the timing window is tight.
+        golden: {
+            fromMeters: 1500,
+            chance: 0.15,       // per enemy group
+            value: 5,
+            minWindow: 0.04,    // grabbing it must be possible with at least 40 ms of slack...
+            maxWindow: 0.22     // ...and hard: never easier than this (or it isn't risky)
         },
 
         aheadUnits: 2200,      // world is generated this far past the right edge of the view
@@ -280,6 +300,13 @@
     function makeBanana(cx, alt) {
         const d = SPRITES.banana;
         return makeEntity('banana', cx - d.size / 2, G - alt - d.size / 2);
+    }
+
+    function makeGoldenBanana(cx, alt) {
+        const e = makeBanana(cx, alt);
+        e.value = CONFIG.golden.value;
+        e.golden = true;
+        return e;
     }
 
     // ---------------------------------------------------------------- jump trajectories
@@ -519,7 +546,9 @@
             cursor: CONFIG.PLAYER_X + 1000, // first obstacle arrives ~2 s after the start
             prevObstacles: [],
             prevEnd: CONFIG.PLAYER_X + 300,
-            count: 0
+            count: 0,
+            lastBonus: -Infinity,   // metres where the last bonus stage started
+            bonusZones: []          // { x0, x1 } track spans of bonus stages, for the game to show
         };
     }
 
@@ -554,6 +583,12 @@
         const crowd = crowdingFor(distance);
         const meters = distance / CONFIG.UNITS_PER_METER;
 
+        const BO = CONFIG.bonus;
+        if (meters >= BO.fromMeters && meters - gen.lastBonus >= BO.spacingMeters && r() < BO.chance) {
+            generateBonus(gen, out, s);
+            return;
+        }
+
         // Choose a pattern whose instance is verifiably clearable at this speed.
         let obstacles = null, win = null;
         for (let attempt = 0; attempt < 4 && !obstacles; attempt++) {
@@ -572,6 +607,11 @@
         // Occasionally trace a banana arc along a jump that clears this cluster.
         if (win && win.traj && r() < 0.3) placeArcBananas(out, win, s, hitboxes(obstacles));
 
+        // Later in a run, sometimes dangle a golden banana somewhere risky.
+        if (meters >= CONFIG.golden.fromMeters && r() < CONFIG.golden.chance) {
+            placeGoldenBanana(gen, out, obstacles, s, neighbours);
+        }
+
         // Space out the next cluster. Slack shrinks with difficulty but never below minGap.
         const SP = CONFIG.spawn;
         const slack = lerp(SP.slackStart, SP.slackEnd, crowd);
@@ -581,6 +621,81 @@
         gen.prevEnd = b.x1;
         gen.cursor = b.x1 + gap;
         gen.count++;
+    }
+
+    // ---------------------------------------------------------------- bonus stages
+
+    // Banana formations for bonus stages: [dx, altitude] pairs. Every altitude is reachable
+    // (there are no enemies to avoid, so any jump is safe).
+    const BONUS_SHAPES = [
+        () => { const out = []; for (let i = 0; i < 7; i++) out.push([i * 58, 30]); return out; },            // ground row
+        () => { const out = []; for (let i = 0; i < 6; i++) out.push([i * 58, 130]); return out; },           // hop row
+        () => { const out = []; for (let i = 0; i < 10; i++) out.push([i * 52, 120 + 85 * Math.sin(i / 9 * Math.PI * 2)]); return out; }, // wave
+        () => { const out = []; for (let i = 0; i < 8; i++) out.push([i * 55, 30 + i * 28]); return out; },   // stairs up
+        () => { const out = []; for (let c = 0; c < 3; c++) for (const a of [30, 120, 210]) out.push([c * 150, a]); return out; }, // columns
+        () => { const out = []; for (let i = 0; i < 9; i++) { const t = i / 8; out.push([i * 50, 40 + 190 * 4 * t * (1 - t)]); } return out; } // arch
+    ];
+
+    function generateBonus(gen, out, s) {
+        const r = gen.rng;
+        const x0 = gen.cursor;
+        const x1 = x0 + s * CONFIG.bonus.seconds;
+        let x = x0 + 120;
+        let last = -1;
+        while (x < x1 - 200) {
+            let k = Math.floor(r() * BONUS_SHAPES.length);
+            if (k === last) k = (k + 1) % BONUS_SHAPES.length; // no shape twice in a row
+            last = k;
+            let width = 0;
+            for (const [dx, alt] of BONUS_SHAPES[k]()) {
+                if (x + dx > x1 - 60) break;
+                out.push(makeBanana(x + dx, alt));
+                width = dx;
+            }
+            x += width + 170 + r() * 120;
+        }
+        gen.bonusZones.push({ x0, x1 });
+        gen.lastBonus = (x0 - CONFIG.PLAYER_X) / CONFIG.UNITS_PER_METER;
+        gen.prevObstacles = [];
+        gen.prevEnd = x1;
+        gen.cursor = x1 + minGap(s) + s * CONFIG.bonus.leadOut;
+        gen.count++;
+    }
+
+    // ---------------------------------------------------------------- golden bananas
+
+    // Try a few risky spots around this enemy group: just before it, between its enemies,
+    // or low just past it. Keep the first one that can be grabbed and survived, but only
+    // with a tight timing window (it must be a real risk).
+    function placeGoldenBanana(gen, out, obstacles, s, neighbours) {
+        const r = gen.rng;
+        const GO = CONFIG.golden;
+        const b = bounds(obstacles);
+        const spots = [];
+        for (let i = 0; i < 3; i++) spots.push([b.x0 - lerp(20, 90, r()), lerp(40, 150, r())]);   // just before it
+        for (let i = 0; i + 1 < obstacles.length; i++) {                                           // between enemies
+            const gapMid = (obstacles[i].hit.x1 + obstacles[i + 1].hit.x0) / 2;
+            spots.push([gapMid, lerp(60, 180, r())]);
+        }
+        spots.push([b.x1 + lerp(30, 90, r()), lerp(110, 170, r())]);                               // hop height, just past it
+        for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+        const opts = {
+            preGround: s * 0.15,
+            postGround: s * CONFIG.fairness.reaction,
+            enough: GO.maxWindow + 0.01, // stop early once it's clearly too easy
+            pressStep: 1 / 240
+        };
+        for (const [cx, alt] of spots.slice(0, 4)) {
+            const banana = makeGoldenBanana(cx, alt);
+            if (!clearOf(banana.hit, neighbours, 4)) continue;
+            opts.target = banana.hit;
+            const w = bestWindow(neighbours, s, opts);
+            if (w && w.seconds >= GO.minWindow && w.seconds <= GO.maxWindow) {
+                out.push(banana);
+                return banana;
+            }
+        }
+        return null;
     }
 
     const BANANA_TIERS = [
@@ -662,7 +777,7 @@
         difficultyFor, speedFor, crowdingFor,
         createPlayer, pressJump, stepPlayer,
         makeBox, playerBox, overlaps,
-        makeTiger, makeHawk, makeBanana, makeHopper, makePouncer, makeGlider,
+        makeTiger, makeHawk, makeBanana, makeGoldenBanana, makeHopper, makePouncer, makeGlider,
         obstacleOffset, obstacleBox,
         createGenerator, generateSegment, generateUntil,
         bestWindow, simulateJump, hitboxes, minGap,

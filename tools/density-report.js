@@ -7,6 +7,11 @@
 const E = require(process.argv[2] ? require('path').resolve(process.argv[2]) : '../engine.js');
 const C = E.CONFIG;
 const SEEDS = 30;
+
+// Bonus stages (no enemies) would water down the enemies-per-second numbers, so they are
+// switched off here and counted separately at the end.
+const BONUS_CHANCE = C.bonus.chance;
+C.bonus.chance = 0;
 const BUCKETS = [[0, 30], [30, 60], [60, 90], [90, 120], [120, 180], [180, 240]]; // seconds
 
 // Seconds needed to reach each track x, integrating the real speed curve.
@@ -48,3 +53,16 @@ for (let i = 0; i < BUCKETS.length; i++) {
     console.log(`${String(a).padStart(3)}-${String(z).padEnd(3)} s   ${String(Math.round(x / C.UNITS_PER_METER)).padStart(7)} m      ` +
         `${(t.enemies / secs).toFixed(2)}        ${(t.clusters / secs).toFixed(2)}       ${(t.enemies / Math.max(1, t.clusters)).toFixed(2)}`);
 }
+
+// Bonus stages and golden bananas, with bonus stages switched back on.
+C.bonus.chance = BONUS_CHANCE;
+let zones = 0, golden = 0;
+for (let seed = 1; seed <= SEEDS; seed++) {
+    const gen = E.createGenerator(E.mulberry32(seed));
+    const ents = [];
+    while (gen.cursor < 5000 * C.UNITS_PER_METER + C.PLAYER_X) E.generateSegment(gen, ents);
+    zones += gen.bonusZones.length;
+    golden += ents.filter((e) => e.golden).length;
+}
+console.log(`
+Per 5 km: ${(zones / SEEDS).toFixed(1)} bonus stages, ${(golden / SEEDS).toFixed(1)} golden bananas`);

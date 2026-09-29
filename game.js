@@ -420,6 +420,25 @@
         return canvas;
     });
 
+    // Golden banana: the banana tinted deep gold with a brighter, warmer glow.
+    const goldenBananaSprite = () => img.banana && effectSprite('banana:golden', () => {
+        const image = img.banana;
+        const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+        const gold = tintSprite(image, '#ff9500', 0.8);
+        const pad = Math.round(w * BANANA_GLOW_PAD);
+        const canvas = document.createElement('canvas');
+        canvas.width = w + pad * 2;
+        canvas.height = h + pad * 2;
+        const g = canvas.getContext('2d');
+        g.shadowColor = 'rgba(255, 190, 30, 1)';
+        g.shadowBlur = w * 0.2;
+        g.drawImage(gold, pad, pad, w, h);
+        g.shadowColor = 'rgba(255, 255, 210, 0.95)';
+        g.shadowBlur = w * 0.07;
+        g.drawImage(gold, pad, pad, w, h);
+        return canvas;
+    });
+
     function hexRgb(hex) {
         const n = parseInt(String(hex).replace('#', ''), 16);
         return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -782,7 +801,7 @@
             if (e.type === 'banana') {
                 if (E.overlaps(collectBox, e.hit)) {
                     e.collected = true;
-                    const n = run.pw.double > 0 ? 2 : 1;
+                    const n = (e.value || 1) * (run.pw.double > 0 ? 2 : 1);
                     run.bananas += n;
                     spawnPopup(e.x - run.trackPos + e.size / 2, e.top, '+' + n);
                 }
@@ -797,6 +816,8 @@
     function cullEntities() {
         const list = run.entities;
         const limit = run.trackPos - CONFIG.cullUnits;
+        const zones = run.gen.bonusZones;
+        while (zones.length && zones[0].x1 < limit) zones.shift();
         let j = 0;
         for (let i = 0; i < list.length; i++) {
             const e = list[i];
@@ -883,6 +904,7 @@
         gen.cursor = run.trackPos + CONFIG.PLAYER_X + E.speedFor(run.distance) * 2.2 + 300;
         gen.prevObstacles = [];
         gen.prevEnd = run.trackPos + CONFIG.PLAYER_X + 300;
+        gen.bonusZones.length = 0; // skipped along with that stretch of world
         E.generateUntil(gen, run.trackPos + view.w + CONFIG.aheadUnits, run.entities);
     }
 
@@ -1073,9 +1095,12 @@
         drawClouds();
         drawLandscape(trackPos);
         drawGround(trackPos);
+        const bonus = run.state === 'playing' || run.state === 'paused' || run.state === 'countdown' ? bonusAt(trackPos) : null;
+        if (bonus) drawBonusGlow(bonus);
         drawEntities(trackPos);
         drawPlayer(alt);
         drawPopups();
+        if (bonus) drawBonusBanner(bonus);
         if (run.pw && run.pw.warpFx > 0) drawWarp(run.pw.warpFx / WARP_FX);
         if (run.state === 'dying' || run.state === 'gameover') drawWasted();
     }
@@ -1251,13 +1276,14 @@
             if (x > maxX || x + e.size < -10 || e.collected) continue;
             if (e.type === 'banana') {
                 const by = e.top + Math.sin(t * 4 + e.phase) * 3;
-                const glow = bananaGlowSprite();
+                const glow = e.golden ? goldenBananaSprite() : bananaGlowSprite();
                 if (glow) {
                     const pad = e.size * BANANA_GLOW_PAD;
                     ctx.drawImage(glow, x - pad, by - pad, e.size + pad * 2, e.size + pad * 2);
                 } else {
-                    drawSprite(img.banana, x, by, e.size, '#ffe135');
+                    drawSprite(img.banana, x, by, e.size, e.golden ? '#ffb000' : '#ffe135');
                 }
+                if (e.golden) drawSparkle(x + e.size * 0.78, by + e.size * 0.2, t * 5 + e.phase);
             } else if (e.hit.mv) {
                 drawMover(e, x, trackPos, t);
             } else if (e.type === 'tiger') {
@@ -1312,10 +1338,8 @@
             return;
         }
 
-        // Gliding hawk: tilts toward where it is heading; an arrow shows the direction.
-        const heading = mv.shift > 0 ? 1 : -1;            // 1 = diving, -1 = rising
+        // Gliding hawk (red-tinted): tilts toward where it is heading.
         const moving = Math.abs(ahead - off) > 0.05;
-        const done = Math.abs(off - mv.shift) < 0.5;
         const rot = moving ? clamp(-(ahead - off) * 0.04, -0.5, 0.5) : Math.sin(t * 6 + e.phase + 1) * 0.06;
         const cy = e.top + s / 2 + off + (moving ? 0 : Math.sin(t * 6 + e.phase) * 3);
         drawShadow(x + s / 2, s * 0.5, (e.hit.y1 + off) - GROUND_Y);
@@ -1324,7 +1348,6 @@
         ctx.rotate(rot);
         drawSprite(glideHawkSprite() || img.hawk, -s / 2, -s / 2, s, '#7b4a2a');
         ctx.restore();
-        if (!done) drawArrow(x + s / 2, heading > 0 ? cy + s * 0.55 : cy - s * 0.55, heading, t);
     }
 
     // Soft shadow on the ground; smaller and fainter the higher the enemy is (`off` < 0 = up).
@@ -1338,24 +1361,82 @@
         ctx.globalAlpha = 1;
     }
 
-    // Pulsing chevron pointing down (dir = 1) or up (dir = -1).
-    function drawArrow(cx, cy, dir, t) {
-        const a = 0.8 + 0.2 * Math.sin(t * 10);
-        ctx.globalAlpha = a;
-        ctx.fillStyle = '#ffe135';
-        ctx.strokeStyle = 'rgba(60,40,0,0.9)';
-        ctx.lineWidth = 3;
+    // Twinkling four-point star on golden bananas.
+    function drawSparkle(cx, cy, t) {
+        const k = 0.5 + 0.5 * Math.sin(t);
+        const r = 5 + 7 * k;
+        ctx.globalAlpha = 0.35 + 0.65 * k;
+        ctx.fillStyle = '#fffbe0';
         ctx.beginPath();
-        ctx.moveTo(cx - 11, cy - 6 * dir);
-        ctx.lineTo(cx, cy + 6 * dir);
-        ctx.lineTo(cx + 11, cy - 6 * dir);
-        ctx.lineTo(cx + 11, cy - 12 * dir);
-        ctx.lineTo(cx, cy);
-        ctx.lineTo(cx - 11, cy - 12 * dir);
+        ctx.moveTo(cx, cy - r);
+        ctx.lineTo(cx + r * 0.25, cy - r * 0.25);
+        ctx.lineTo(cx + r, cy);
+        ctx.lineTo(cx + r * 0.25, cy + r * 0.25);
+        ctx.lineTo(cx, cy + r);
+        ctx.lineTo(cx - r * 0.25, cy + r * 0.25);
+        ctx.lineTo(cx - r, cy);
+        ctx.lineTo(cx - r * 0.25, cy - r * 0.25);
         ctx.closePath();
-        ctx.stroke();
         ctx.fill();
         ctx.globalAlpha = 1;
+    }
+
+    // =====================================================================
+    // Bonus stages (generated by the engine: a stretch with bananas and no enemies)
+    // =====================================================================
+
+    const BONUS_LEAD = 1.0; // seconds of "BONUS!" warning before the stage starts
+
+    // The bonus stage the gorilla is in (or about to enter): { zone, q, into } where q is how
+    // much of it is left (1 -> 0) and `into` is seconds since it started (negative = not yet).
+    function bonusAt(trackPos) {
+        if (!run.gen) return null;
+        const pos = trackPos + CONFIG.PLAYER_X;
+        const s = Math.max(1, run.speed);
+        for (const z of run.gen.bonusZones) {
+            if (pos >= z.x0 - s * BONUS_LEAD && pos <= z.x1) {
+                return { zone: z, q: clamp((z.x1 - pos) / (z.x1 - z.x0), 0, 1), into: (pos - z.x0) / s, left: (z.x1 - pos) / s };
+            }
+        }
+        return null;
+    }
+
+    // Warm golden light over the world while a bonus stage is on (fades in and out).
+    function drawBonusGlow(b) {
+        const k = clamp(Math.min(b.into + BONUS_LEAD, b.left) / 0.6, 0, 1);
+        if (k <= 0) return;
+        ctx.globalAlpha = 0.2 * k;
+        ctx.fillStyle = '#ffc63a';
+        ctx.fillRect(0, view.top, view.w, view.h);
+        ctx.globalAlpha = 1;
+    }
+
+    // "BONUS!" banner at the top with a bar showing how much of the stage is left.
+    function drawBonusBanner(b) {
+        const cx = view.w / 2;
+        const y = Math.max(view.top + 62, 62);
+        const pulse = 1 + 0.06 * Math.sin(run.clock * 8);
+        ctx.save();
+        ctx.translate(cx, y);
+        ctx.scale(pulse, pulse);
+        ctx.font = 'bold 44px Impact, "Arial Black", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 7;
+        ctx.lineJoin = 'round'; // no spikes on the font's sharp corners
+        ctx.strokeStyle = '#5a3500';
+        ctx.fillStyle = '#ffe135';
+        const text = b.into < 0 ? 'BONUS STAGE!' : '🍌 BONUS! 🍌';
+        ctx.strokeText(text, 0, 0);
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+        if (b.into >= 0) {
+            const w = 220, h = 10, x = cx - w / 2, by = y + 32;
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.fillRect(x - 2, by - 2, w + 4, h + 4);
+            ctx.fillStyle = '#ffe135';
+            ctx.fillRect(x, by, w * b.q, h);
+        }
     }
 
     function drawPlayer(alt) {
@@ -1475,6 +1556,7 @@
             ctx.font = 'bold 92px Impact, "Arial Black", sans-serif';
             ctx.textAlign = 'center';
             ctx.lineWidth = 8;
+            ctx.lineJoin = 'round';
             ctx.strokeStyle = '#1a0000';
             ctx.fillStyle = '#d61f1f';
             ctx.strokeText('WASTED', view.w / 2, CONFIG.WORLD_H / 2);
