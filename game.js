@@ -1597,20 +1597,32 @@
     function drawRush(b) {
         const k = clamp(Math.min(b.into + BONUS_LEAD, b.left) / 0.5, 0, 1);
         if (k > 0) {
-            if (!rushVignette) {
-                rushVignette = ctx.createRadialGradient(view.w / 2, CONFIG.WORLD_H / 2, Math.min(view.w, view.h) * 0.35,
-                    view.w / 2, CONFIG.WORLD_H / 2, Math.max(view.w, view.h) * 0.75);
-                rushVignette.addColorStop(0, 'rgba(220,30,30,0)');
-                rushVignette.addColorStop(1, 'rgba(220,30,30,0.55)');
-            }
+            // The red edge glow is a soft gradient, so it's drawn once into a small image and
+            // stretched over the screen. Filling a full-screen gradient every frame was slow on
+            // phones (frames up to 80 ms during rushes).
+            if (!rushVignette) rushVignette = buildRushVignette();
             ctx.globalAlpha = k * (0.75 + 0.25 * Math.sin(run.clock * 6));
-            ctx.fillStyle = rushVignette;
-            ctx.fillRect(0, view.top, view.w, view.h);
+            ctx.drawImage(rushVignette, 0, view.top, view.w, view.h);
             ctx.globalAlpha = 1;
         }
         drawBanner(b, b.into < 0 ? 'RUSH INCOMING!' : '⚠️ RUSH! ⚠️', '#ff4a3a', '#3a0000', '#ff4a3a');
     }
-    let rushVignette = null;
+    let rushVignette = null; // cached small canvas; cleared on resize
+
+    function buildRushVignette() {
+        const w = 160, h = Math.max(1, Math.round(160 * view.h / view.w));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const g = c.getContext('2d');
+        const cy = h * (CONFIG.WORLD_H / 2 - view.top) / view.h;
+        const grad = g.createRadialGradient(w / 2, cy, Math.min(w, h) * 0.35, w / 2, cy, Math.max(w, h) * 0.75);
+        grad.addColorStop(0, 'rgba(220,30,30,0)');
+        grad.addColorStop(1, 'rgba(220,30,30,0.55)');
+        g.fillStyle = grad;
+        g.fillRect(0, 0, w, h);
+        return c;
+    }
 
     // Warm golden light over the world while a bonus stage is on (fades in and out).
     function drawBonusGlow(b) {
@@ -1632,19 +1644,9 @@
         const cx = view.w / 2;
         const y = Math.max(view.top + 62, 62);
         const pulse = 1 + 0.06 * Math.sin(run.clock * 8);
-        ctx.save();
-        ctx.translate(cx, y);
-        ctx.scale(pulse, pulse);
-        ctx.font = 'bold 44px Impact, "Arial Black", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.lineWidth = 7;
-        ctx.lineJoin = 'round'; // no spikes on the font's sharp corners
-        ctx.strokeStyle = outline;
-        ctx.fillStyle = fill;
-        ctx.strokeText(text, 0, 0);
-        ctx.fillText(text, 0, 0);
-        ctx.restore();
+        const img = bannerImage(text, fill, outline);
+        const w = img.width / BANNER_RES * pulse, h = img.height / BANNER_RES * pulse;
+        ctx.drawImage(img, cx - w / 2, y - h / 2, w, h);
         if (b.into >= 0) {
             const w = 220, h = 10, x = cx - w / 2, by = y + 32;
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -1652,6 +1654,50 @@
             ctx.fillStyle = barColor;
             ctx.fillRect(x, by, w * b.q, h);
         }
+    }
+
+    // Banner titles are drawn once into an image and reused: drawing outlined text (and
+    // emoji like ⚠️) every frame was the slowest thing on screen (up to 80 ms frames on phones).
+    const BANNER_RES = 2;         // drawn at 2x so it stays sharp on high-density screens
+    const bannerCache = new Map();
+
+    // Build every cached effect image during loading, so none is created mid-run (each one
+    // takes a few milliseconds and would show up as a hitch).
+    function prewarm() {
+        bannerImage('BONUS STAGE!', '#ffe135', '#5a3500');
+        bannerImage('🍌 BONUS! 🍌', '#ffe135', '#5a3500');
+        bannerImage('RUSH INCOMING!', '#ff4a3a', '#3a0000');
+        bannerImage('⚠️ RUSH! ⚠️', '#ff4a3a', '#3a0000');
+        rushVignette = buildRushVignette();
+        whiteTigerSprite(); glideHawkSprite(); pounceTigerSprite();
+        bananaGlowSprite(); goldenBananaSprite();
+        skinSprite(skinById(Progress.data.selected));
+    }
+
+    function bannerImage(text, fill, outline) {
+        const key = text + '|' + fill + '|' + outline;
+        let c = bannerCache.get(key);
+        if (c) return c;
+        const font = 'bold 44px Impact, "Arial Black", sans-serif';
+        c = document.createElement('canvas');
+        const m = c.getContext('2d');
+        m.font = font;
+        const w = Math.ceil(m.measureText(text).width) + 24, h = 64;
+        c.width = w * BANNER_RES;
+        c.height = h * BANNER_RES;
+        const g = c.getContext('2d');
+        g.scale(BANNER_RES, BANNER_RES);
+        g.font = font;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.lineWidth = 7;
+        g.lineJoin = 'round'; // no spikes on the font's sharp corners
+        g.strokeStyle = outline;
+        g.fillStyle = fill;
+        g.strokeText(text, w / 2, h / 2);
+        g.fillText(text, w / 2, h / 2);
+        bannerCache.set(key, c);
+        return c;
     }
 
     // The gorilla in its equipped skin, with bob, jump tilt and power-up effects.
@@ -2518,6 +2564,7 @@
         resetClouds();
         loadAssets().then(() => {
             assetsReady = true;
+            prewarm();
             // Then fetch the other skins quietly; refresh the Shop if it's open.
             loadRestOfSkins().then(() => {
                 if (dom.screens.skins.classList.contains('active')) renderSkins();
