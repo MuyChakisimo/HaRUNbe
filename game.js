@@ -74,6 +74,9 @@
         installCloseBtn: $('install-close-btn'),
         installTabs: document.querySelectorAll('.install-tab'),
         installToast: $('install-toast'),
+        shareBtn: $('share-btn'),
+        resShareBtn: $('res-share-btn'),
+        toast: $('toast'),
         powerBar: $('power-bar'),
         resWallet: $('res-wallet'),
         resUnlocks: $('res-unlocks'),
@@ -1943,7 +1946,7 @@
         dom.resWallet.textContent = '+' + numberFormat.format(r.bananas) + ' banked · Bank 🍌 ' +
             numberFormat.format(Progress.data.bananas);
         const names = r.newSkins.map((id) => skinById(id).name);
-        dom.resUnlocks.textContent = names.length ? 'You can now buy: ' + names.join(', ') + '! Visit Skins.' : '';
+        dom.resUnlocks.textContent = names.length ? 'You can now buy: ' + names.join(', ') + '! Visit the Shop.' : '';
         setOverlay(dom.resUnlocks, names.length > 0);
 
         const onBoard = r.boardDistance || r.boardBananas;
@@ -2274,6 +2277,8 @@
             updateOrientationUI();
         });
         dom.updateBtn.addEventListener('click', () => window.location.reload());
+        dom.shareBtn.addEventListener('click', Share.shareGame);
+        dom.resShareBtn.addEventListener('click', Share.shareRun);
     }
 
     // =====================================================================
@@ -2332,6 +2337,56 @@
             resize();
         });
     }
+
+    // =====================================================================
+    // Share (main menu and Run Over screen)
+    // =====================================================================
+
+    // Phones open the system share sheet (Messages, WhatsApp...). Where that isn't available
+    // (most desktop browsers) the message and link are copied to the clipboard instead.
+    const Share = (function () {
+        let toastTimer = 0;
+
+        // The game's own address, without "index.html" or ?debug, so friends get a clean link.
+        function gameUrl() {
+            return location.origin + location.pathname.replace(/index\.html$/, '');
+        }
+
+        function toast(text) {
+            dom.toast.textContent = text;
+            setOverlay(dom.toast, true);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => setOverlay(dom.toast, false), 3000);
+        }
+
+        async function share(text) {
+            const url = gameUrl();
+            if (navigator.share) {
+                try { await navigator.share({ title: 'HaRUNbe', text, url }); return; }
+                catch (e) { if (e && e.name === 'AbortError') return; /* closed the sheet */ }
+            }
+            try {
+                await navigator.clipboard.writeText(text + ' ' + url);
+                toast('Link copied! Paste it to your friends.');
+            } catch {
+                toast(url); // clipboard blocked: at least show the link
+            }
+        }
+
+        function shareGame() {
+            share('Run, jump and dodge tigers in HaRUNbe 🦍🍌 Free to play in your browser!');
+        }
+
+        function shareRun() {
+            const r = run.result;
+            if (!r) return shareGame();
+            const best = r.newDistance ? ' A new personal best!' : '';
+            share('I ran ' + miles(r.distance) + ' and grabbed ' + numberFormat.format(r.bananas) +
+                ' bananas in HaRUNbe 🦍🍌' + best + ' Can you beat me?');
+        }
+
+        return { shareGame, shareRun, toast };
+    })();
 
     // =====================================================================
     // Install (Add to Home Screen)

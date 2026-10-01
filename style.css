@@ -525,6 +525,25 @@ h3 {
 
 .install-panel > .btn { align-self: center; }
 
+.share-btn { background: #7a3fb0; border-color: #4f2478; }
+.share-btn:hover:not(:disabled) { background: #9150cc; }
+
+.toast {
+    position: fixed;
+    z-index: 200;
+    left: 50%;
+    top: calc(12px + var(--safe-top));
+    transform: translateX(-50%);
+    max-width: calc(100vw - 24px);
+    padding: 10px 16px;
+    font-weight: bold;
+    text-align: center;
+    overflow-wrap: anywhere;
+    background: var(--panel);
+    border: 2px solid var(--jungle-light);
+    border-radius: 12px;
+}
+
 .install-toast {
     position: absolute;
     left: 50%;

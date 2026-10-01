@@ -42,6 +42,7 @@
             <button id="skins-btn" class="btn">Shop <span class="btn-wallet">🍌 <span id="skins-btn-wallet">0</span></span></button>
             <button id="records-btn" class="btn">Records</button>
             <button id="install-btn" class="btn install-btn hidden">📲 Install</button>
+            <button id="share-btn" class="btn share-btn">📤 Share</button>
             <p id="menu-best" class="menu-best"></p>
             <p class="portrait-hint">Best played in landscape</p>
         </div>
@@ -191,6 +192,7 @@
                         <div class="button-row">
                             <button id="restart-btn" class="btn btn-primary">Restart</button>
                             <button id="results-menu-btn" class="btn">Main Menu</button>
+                            <button id="res-share-btn" class="btn share-btn" aria-label="Share your run">📤 Share</button>
                         </div>
                     </div>
                 </div>
@@ -207,6 +209,9 @@
     <p class="rotate-text">HaRUNbe is made for landscape. Turn your phone sideways to keep running.</p>
     <button id="rotate-anyway-btn" class="btn btn-small">Play in portrait anyway</button>
 </div>
+
+<!-- Short messages ("Link copied!") shown above every screen -->
+<div id="toast" class="toast hidden" role="status"></div>
 
 <script src="engine.js"></script>
 <script src="skins.js"></script>
