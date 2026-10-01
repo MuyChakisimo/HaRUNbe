@@ -12,7 +12,7 @@ const SEEDS = 30;
 // switched off here and counted separately at the end.
 const BONUS_CHANCE = C.bonus.chance;
 C.bonus.chance = 0;
-const BUCKETS = [[0, 30], [30, 60], [60, 90], [90, 120], [120, 180], [180, 240]]; // seconds
+const BUCKETS = [[0, 30], [30, 60], [60, 90], [90, 120], [120, 180], [180, 240], [240, 300], [300, 360]]; // seconds
 
 // Seconds needed to reach each track x, integrating the real speed curve.
 function timeAt(x) {

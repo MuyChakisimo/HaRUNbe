@@ -341,7 +341,11 @@
         // The distance goals a skin needs before it can be bought.
         function requirementsMet(skin) {
             const p = goalProgress(skin);
-            return (!skin.bestRun || p.best >= skin.bestRun) && (!skin.totalRun || p.total >= skin.totalRun);
+            const runOk = !skin.bestRun || p.best >= skin.bestRun;
+            const totalOk = !skin.totalRun || p.total >= skin.totalRun;
+            // `either`: one long run OR enough total distance unlocks it.
+            if (skin.either && skin.bestRun && skin.totalRun) return p.best >= skin.bestRun || p.total >= skin.totalRun;
+            return runOk && totalOk;
         }
 
         function canBuy(skin) {
@@ -460,6 +464,32 @@
     // Diving and rising hawks: a shade of red. Pouncing tigers: a deeper orange.
     const glideHawkSprite = () => img.hawk && effectSprite('hawk:glide', () => tintSprite(img.hawk, '#ff4a3a', 0.45));
     const pounceTigerSprite = () => img.tiger && effectSprite('tiger:pounce', () => tintSprite(img.tiger, '#ff9a2a', 0.4));
+
+    // White tiger: the tiger with its orange drained to white and a cool blue tint; the black
+    // stripes and outline stay dark.
+    const whiteTigerSprite = () => img.tiger && effectSprite('tiger:white', () => {
+        const image = img.tiger;
+        const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext('2d');
+        g.drawImage(image, 0, 0, w, h);
+        g.globalCompositeOperation = 'saturation';  // remove the colour (orange -> grey)
+        g.fillStyle = '#808080';
+        g.fillRect(0, 0, w, h);
+        g.globalCompositeOperation = 'screen';      // lift the greys toward white
+        g.globalAlpha = 0.75;
+        g.fillStyle = '#c8c8c8';
+        g.fillRect(0, 0, w, h);
+        g.globalCompositeOperation = 'multiply';    // a cool, icy tint
+        g.globalAlpha = 1;
+        g.fillStyle = '#e4f1ff';
+        g.fillRect(0, 0, w, h);
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(image, 0, 0, w, h);             // keep only the tiger's shape
+        return canvas;
+    });
 
     // Banana with a soft yellow glow around its outline. The canvas is padded by
     // BANANA_GLOW_PAD (a fraction of the sprite size) on every side to leave room for the glow.
@@ -589,6 +619,7 @@
             dom.canvas.height = bh;
         }
         duskGradient = null;
+        rushVignette = null;
         needsRender = true;
         if (dom.screens.skins.classList.contains('active')) renderSkins(); // re-fit the cards
         updateOrientationUI();
@@ -886,6 +917,8 @@
         const limit = run.trackPos - CONFIG.cullUnits;
         const zones = run.gen.bonusZones;
         while (zones.length && zones[0].x1 < limit) zones.shift();
+        const rushes = run.gen.rushZones;
+        while (rushes.length && rushes[0].x1 < limit) rushes.shift();
         let j = 0;
         for (let i = 0; i < list.length; i++) {
             const e = list[i];
@@ -974,6 +1007,8 @@
         gen.prevObstacles = [];
         gen.prevEnd = run.trackPos + CONFIG.PLAYER_X + 300;
         gen.bonusZones.length = 0; // skipped along with that stretch of world
+        gen.rushZones.length = 0;
+        gen.rushEnd = 0;
         E.generateUntil(gen, run.trackPos + view.w + CONFIG.aheadUnits, run.entities);
     }
 
@@ -1176,6 +1211,8 @@
         drawPlayer(alt);
         drawPopups();
         if (bonus) drawBonusBanner(bonus);
+        const rush = bonus || !(run.state === 'playing' || run.state === 'paused' || run.state === 'countdown') ? null : rushAt(trackPos);
+        if (rush) drawRush(rush);
         if (run.pw && run.pw.warpFx > 0) drawWarp(run.pw.warpFx / WARP_FX);
         if (run.state === 'dying' || run.state === 'gameover') drawWasted();
     }
@@ -1352,7 +1389,10 @@
         for (let i = 0; i < list.length; i++) {
             const e = list[i];
             const x = e.x - trackPos;
-            if (x > maxX || x + e.size < -10 || e.collected) continue;
+            if (e.collected) continue;
+            // Chargers decide for themselves (they sprint in from off screen, with a warning).
+            const charger = e.hit.mv && e.hit.mv.kind === 'charge';
+            if (!charger && (x > maxX || x + e.size < -10)) continue;
             if (e.type === 'banana') {
                 const by = e.top + Math.sin(t * 4 + e.phase) * 3;
                 const glow = e.golden ? goldenBananaSprite() : bananaGlowSprite();
@@ -1389,6 +1429,8 @@
         const off = E.obstacleOffset(e.hit, trackPos);
         const ahead = E.obstacleOffset(e.hit, trackPos + 12);
         const feetY = e.top + s * SPRITES[e.type].feet; // ground contact line (tigers)
+
+        if (mv.kind === 'charge') { drawCharger(e, x, trackPos, t, feetY); return; }
 
         if (e.type === 'tiger') {
             let sx = 1, sy = 1, rot = 0, wiggle = 0;
@@ -1427,6 +1469,61 @@
         ctx.rotate(rot);
         drawSprite(glideHawkSprite() || img.hawk, -s / 2, -s / 2, s, '#7b4a2a');
         ctx.restore();
+    }
+
+    // White tiger: waits (slow breathing), then sprints at you: fast bounding gait, leaning
+    // forward, dust kicked up behind. While it is still off screen, a pulsing marker at the
+    // right edge warns that it is coming.
+    function drawCharger(e, baseX, trackPos, t, feetY) {
+        const mv = e.hit.mv;
+        const s = e.size;
+        const dd = e.hit.x0 - (trackPos + E.PLAYER_HITBOX.PHX1);
+        const charging = dd < mv.trigger;
+        const x = baseX + E.obstacleShift(e.hit, trackPos);
+
+        if (charging && x > view.w - s * 0.3) { drawChargeWarning(feetY - s * 0.45, t); return; }
+        if (x > view.w + 10 || x + s < -10) return;
+
+        let bob = 0, rot = 0, sy = 1;
+        if (charging) {
+            bob = -Math.abs(Math.sin(t * 18 + e.phase)) * 7;
+            rot = -0.07;                                       // leaning into the sprint
+            for (let i = 0; i < 3; i++) {                      // dust puffs behind it
+                const q = (t * 3 + i / 3 + e.phase) % 1;
+                ctx.globalAlpha = 0.35 * (1 - q);
+                ctx.fillStyle = '#d9c9a3';
+                ctx.beginPath();
+                ctx.arc(x + s * (0.85 + q * 0.6), feetY - 6 - q * 10, 6 + q * 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        } else {
+            sy = 0.96 + 0.03 * Math.sin(t * 3 + e.phase);      // waiting, breathing
+        }
+        drawShadow(x + s / 2, s * 0.55, bob);
+        ctx.save();
+        ctx.translate(x + s / 2, feetY + bob);
+        ctx.rotate(rot);
+        ctx.scale(2 - sy, sy);
+        drawSprite(whiteTigerSprite() || img.tiger, -s / 2, -s * SPRITES.tiger.feet, s, '#f2f2f2');
+        ctx.restore();
+    }
+
+    function drawChargeWarning(y, t) {
+        const x = view.w - 34;
+        const k = 0.6 + 0.4 * Math.abs(Math.sin(t * 9));
+        ctx.globalAlpha = k;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.beginPath();
+        ctx.arc(x, y, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.font = 'bold 28px "Trebuchet MS", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('⚠️', x, y + 1);
+        ctx.textBaseline = 'alphabetic';
     }
 
     // Soft shadow on the ground; smaller and fainter the higher the enemy is (`off` < 0 = up).
@@ -1480,6 +1577,38 @@
         return null;
     }
 
+    // The rush wave the gorilla is in or about to enter (same shape as bonusAt's result).
+    function rushAt(trackPos) {
+        if (!run.gen) return null;
+        const pos = trackPos + CONFIG.PLAYER_X;
+        const s = Math.max(1, run.speed);
+        for (const z of run.gen.rushZones) {
+            if (pos >= z.x0 - s * BONUS_LEAD && pos <= z.x1) {
+                return { zone: z, q: clamp((z.x1 - pos) / (z.x1 - z.x0), 0, 1), into: (pos - z.x0) / s, left: (z.x1 - pos) / s };
+            }
+        }
+        return null;
+    }
+
+    // Rush wave: a red glow around the screen edges, and a red banner with a timer bar.
+    function drawRush(b) {
+        const k = clamp(Math.min(b.into + BONUS_LEAD, b.left) / 0.5, 0, 1);
+        if (k > 0) {
+            if (!rushVignette) {
+                rushVignette = ctx.createRadialGradient(view.w / 2, CONFIG.WORLD_H / 2, Math.min(view.w, view.h) * 0.35,
+                    view.w / 2, CONFIG.WORLD_H / 2, Math.max(view.w, view.h) * 0.75);
+                rushVignette.addColorStop(0, 'rgba(220,30,30,0)');
+                rushVignette.addColorStop(1, 'rgba(220,30,30,0.55)');
+            }
+            ctx.globalAlpha = k * (0.75 + 0.25 * Math.sin(run.clock * 6));
+            ctx.fillStyle = rushVignette;
+            ctx.fillRect(0, view.top, view.w, view.h);
+            ctx.globalAlpha = 1;
+        }
+        drawBanner(b, b.into < 0 ? 'RUSH INCOMING!' : '⚠️ RUSH! ⚠️', '#ff4a3a', '#3a0000', '#ff4a3a');
+    }
+    let rushVignette = null;
+
     // Warm golden light over the world while a bonus stage is on (fades in and out).
     function drawBonusGlow(b) {
         const k = clamp(Math.min(b.into + BONUS_LEAD, b.left) / 0.6, 0, 1);
@@ -1492,6 +1621,11 @@
 
     // "BONUS!" banner at the top with a bar showing how much of the stage is left.
     function drawBonusBanner(b) {
+        drawBanner(b, b.into < 0 ? 'BONUS STAGE!' : '🍌 BONUS! 🍌', '#ffe135', '#5a3500', '#ffe135');
+    }
+
+    // Pulsing title at the top of the screen, plus a timer bar once the stage has started.
+    function drawBanner(b, text, fill, outline, barColor) {
         const cx = view.w / 2;
         const y = Math.max(view.top + 62, 62);
         const pulse = 1 + 0.06 * Math.sin(run.clock * 8);
@@ -1503,9 +1637,8 @@
         ctx.textBaseline = 'middle';
         ctx.lineWidth = 7;
         ctx.lineJoin = 'round'; // no spikes on the font's sharp corners
-        ctx.strokeStyle = '#5a3500';
-        ctx.fillStyle = '#ffe135';
-        const text = b.into < 0 ? 'BONUS STAGE!' : '🍌 BONUS! 🍌';
+        ctx.strokeStyle = outline;
+        ctx.fillStyle = fill;
         ctx.strokeText(text, 0, 0);
         ctx.fillText(text, 0, 0);
         ctx.restore();
@@ -1513,7 +1646,7 @@
             const w = 220, h = 10, x = cx - w / 2, by = y + 32;
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
             ctx.fillRect(x - 2, by - 2, w + 4, h + 4);
-            ctx.fillStyle = '#ffe135';
+            ctx.fillStyle = barColor;
             ctx.fillRect(x, by, w * b.q, h);
         }
     }
@@ -1900,6 +2033,16 @@
     function nextGoal(skin) {
         const p = Progress.goalProgress(skin);
         const since = p.fresh ? ' (runs since this skin was added)' : '';
+        if (skin.either && skin.bestRun && skin.totalRun) {
+            if (Progress.requirementsMet(skin)) return null;
+            // Either goal unlocks it: show both, and fill the bar with whichever is closer.
+            return {
+                text: '🔒 ' + compactFormat.format(skin.bestRun) + ' run or ' + compactFormat.format(skin.totalRun) + ' total',
+                frac: Math.max(p.best / skin.bestRun, p.total / skin.totalRun),
+                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run (best: ' + numberFormat.format(p.best) +
+                    ' m), or ' + numberFormat.format(skin.totalRun) + ' m in total (so far: ' + numberFormat.format(p.total) + ' m)' + since
+            };
+        }
         if (skin.bestRun && p.best < skin.bestRun) {
             // "New run" when the player's all-time record already beats the goal.
             const label = p.fresh && Records.data.bestDistance >= skin.bestRun ? 'New run' : '1 run';
@@ -1956,13 +2099,14 @@
             btn.disabled = !!goal || bank < skin.price;
             if (!btn.disabled) btn.classList.add('btn-primary');
             if (goal) {
-                status.textContent = '🔒 ' + goal.label + ': ' + compactFormat.format(goal.have) +
-                    '/' + compactFormat.format(goal.need) + ' m';
+                status.textContent = goal.text || ('🔒 ' + goal.label + ': ' + compactFormat.format(goal.have) +
+                    '/' + compactFormat.format(goal.need) + ' m');
                 card.title = goal.full;
                 const bar = document.createElement('div');
                 bar.className = 'skin-bar';
                 const fill = document.createElement('span');
-                fill.style.width = Math.min(100, (goal.have / goal.need) * 100).toFixed(1) + '%';
+                const frac = goal.frac !== undefined ? goal.frac : goal.have / goal.need;
+                fill.style.width = Math.min(100, frac * 100).toFixed(1) + '%';
                 bar.appendChild(fill);
                 info.appendChild(bar);
             } else if (bank < skin.price) {

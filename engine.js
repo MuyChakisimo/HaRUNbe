@@ -38,7 +38,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.9.0',
+        VERSION: '3.11.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -59,7 +59,7 @@
 
         speed: {
             start: 440,        // units/s at 0 m  (~8.8 m/s)
-            max: 860,          // hard cap        (~17.2 m/s)
+            max: 920,          // hard cap        (~18.4 m/s)
             rampMeters: 1600   // speed (and difficulty) approaches the cap exponentially over distance
         },
 
@@ -100,6 +100,16 @@
 
         // Golden bananas: worth `value` bananas, placed in risky spots near enemies. There is
         // always a way to grab one and survive, but the timing window is tight.
+        // Rush waves: the opposite of a bonus stage. For `seconds`, only multi-enemy groups
+        // come, at the closest fair spacing; then a short breather.
+        rush: {
+            fromMeters: 2500,
+            spacingMeters: 900,
+            chance: 0.05,       // per enemy group
+            seconds: 8,
+            breatherSeconds: 1.2
+        },
+
         golden: {
             fromMeters: 1500,
             chance: 0.15,       // per enemy group
@@ -257,6 +267,7 @@
      *   hop:    bounces in a steady rhythm            { h, period, phase }
      *   pounce: crouches, then leaps once when close   { h, start, span }
      *   glide:  moves from one height to another       { shift, far, near }
+     *   charge: stands still, then sprints at you       { trigger, c }   (sideways: motionShift)
      */
     function motionOffset(mv, dd) {
         if (mv.kind === 'hop') return -mv.h * Math.abs(Math.sin(Math.PI * dd / mv.period + mv.phase));
@@ -271,14 +282,25 @@
         return 0;
     }
 
+    // Sideways movement (track units, negative = toward the player). Only chargers move
+    // sideways: they wait until the player is `trigger` units away, then close in at `c` times
+    // the running speed, arriving at their base position exactly when the player gets there.
+    function motionShift(mv, dd) {
+        return mv.kind === 'charge' ? mv.c * Math.min(dd, mv.trigger) : 0;
+    }
+
     function obstacleOffset(ob, trackPos) {
         return ob.mv ? motionOffset(ob.mv, ob.x0 - (trackPos + PHX1)) : 0;
     }
 
+    function obstacleShift(ob, trackPos) {
+        return ob.mv ? motionShift(ob.mv, ob.x0 - (trackPos + PHX1)) : 0;
+    }
+
     // The obstacle's hitbox where it is when the camera is at `trackPos`.
     function obstacleBox(ob, trackPos, out) {
-        const o = obstacleOffset(ob, trackPos);
-        out.x0 = ob.x0; out.x1 = ob.x1;
+        const o = obstacleOffset(ob, trackPos), sx = obstacleShift(ob, trackPos);
+        out.x0 = ob.x0 + sx; out.x1 = ob.x1 + sx;
         out.y0 = ob.y0 + o; out.y1 = ob.y1 + o;
         return out;
     }
@@ -287,6 +309,16 @@
         e.hit.mv = mv;
         e.hit.sy0 = e.hit.y0 - sweepUp;
         e.hit.sy1 = e.hit.y1 + sweepDown;
+        return e;
+    }
+
+    // White tiger: stands still, then charges when the player is `trigger` units from where it
+    // will meet them, at `c` x the running speed. `sx0` is the furthest left it can be while
+    // still touching the player, so the fairness checker knows where to look.
+    function makeCharger(x, trigger, c) {
+        const e = setMotion(makeTiger(x), { kind: 'charge', trigger, c }, 0, 0);
+        e.hit.sx0 = e.hit.x0 - c * ((e.hit.x1 - e.hit.x0) + (PHX1 - PHX0) + 40);
+        e.white = true;
         return e;
     }
 
@@ -379,12 +411,14 @@
     // Moving obstacles are checked step by step (every `dx` track units).
     function groundHits(ob, ta, tb, dx) {
         if (!ob.mv) return standsIn(ob) && ob.x0 < tb + PHX1 && ob.x1 > ta + PHX0;
-        const lo = Math.max(ta, ob.x0 - PHX1), hi = Math.min(tb, ob.x1 - PHX0);
+        const left = ob.sx0 === undefined ? ob.x0 : ob.sx0; // chargers reach further left
+        const lo = Math.max(ta, left - PHX1), hi = Math.min(tb, ob.x1 - PHX0);
         if (lo > hi) return false;
         const n = Math.max(1, Math.ceil((hi - lo) / dx));
         for (let i = 0; i <= n; i++) {
-            const o = obstacleOffset(ob, lo + (hi - lo) * (i / n));
-            if (ob.y1 + o > G - PH_TOP && ob.y0 + o < G - PH_BOTTOM) return true;
+            const T = lo + (hi - lo) * (i / n);
+            const b = obstacleBox(ob, T, scratchOb);
+            if (b.x0 < T + PHX1 && b.x1 > T + PHX0 && b.y1 > G - PH_TOP && b.y0 < G - PH_BOTTOM) return true;
         }
         return false;
     }
@@ -427,7 +461,8 @@
 
     // Does this jump touch the obstacle at any step while airborne? (only checks nearby steps)
     function airHits(px, dx, traj, ob) {
-        const i0 = Math.max(0, Math.floor((ob.x0 - PHX1 - px) / dx) - 1);
+        const left = ob.sx0 === undefined ? ob.x0 : ob.sx0;
+        const i0 = Math.max(0, Math.floor((left - PHX1 - px) / dx) - 1);
         const i1 = Math.min(traj.steps, Math.ceil((ob.x1 - PHX0 - px) / dx) + 1);
         const box = scratchBox;
         for (let i = i0; i < i1; i++) {
@@ -458,7 +493,7 @@
         // Only presses whose jump can reach the target (or the obstacles) are worth searching.
         let lo = Infinity, hi = -Infinity;
         if (target) { lo = target.x0; hi = target.x1; }
-        else for (const ob of obstacles) { lo = Math.min(lo, ob.x0); hi = Math.max(hi, ob.x1); }
+        else for (const ob of obstacles) { lo = Math.min(lo, ob.sx0 === undefined ? ob.x0 : ob.sx0); hi = Math.max(hi, ob.x1); }
 
         // Running without jumping.
         if (!target && groundRunClear(obstacles, s)) {
@@ -546,7 +581,7 @@
 
         // Moving enemies (see motionOffset). `s` is the running speed where the pattern spawns.
         { name: 'hopper', from: 600, weight: 2, lateWeight: 3,     // bouncing tiger: time the jump to its rhythm
-            build: (x, r, s) => [makeHopper(x, lerp(44, 66, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI)] },
+            build: (x, r, s) => [makeHopper(x, lerp(44, 60, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI)] },
         { name: 'diver', from: 800, weight: 2, lateWeight: 3,      // hawk swoops from high to low: hop it
             build: (x, r, s) => [makeGlider(x, lerp(102, 116, r()), lerp(14, 24, r()), s)] },
         { name: 'riser', from: 1000, weight: 2, lateWeight: 3,     // hawk climbs from low to high: don't jump
@@ -554,7 +589,23 @@
         { name: 'pouncer', from: 1200, weight: 2, lateWeight: 3,   // crouching tiger leaps as you arrive: run under it
             build: (x, r, s) => [makePouncer(x, lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] },
         { name: 'tigerThenPouncer', from: 1800, weight: 1, lateWeight: 2, // hop the tiger, then stay down
-            build: (x, r, s) => [makeTiger(x), makePouncer(x + lerp(200, 240, r()), lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] }
+            build: (x, r, s) => [makeTiger(x), makePouncer(x + lerp(200, 240, r()), lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] },
+
+        // White tiger (2,000 m+): waits, then sprints at you, often right past the next group.
+        { name: 'whiteTiger', from: 2000, weight: 2, lateWeight: 3,
+            build: (x, r, s) => [makeCharger(x, s * lerp(1.0, 1.6, r()), lerp(0.7, 0.9, r()))] },
+
+        // Late game (2,000 m+): the moving enemies combined, so long runs keep changing.
+        { name: 'hopperPair', from: 2000, weight: 3, lateWeight: 3,     // two bouncing tigers, out of step
+            build: (x, r, s) => [makeHopper(x, lerp(40, 60, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI),
+                makeHopper(x + lerp(66, 80, r()), lerp(40, 60, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI)] },
+        { name: 'tigerThenDiver', from: 2200, weight: 3, lateWeight: 3, // hop the tiger as a hawk swoops in behind it
+            build: (x, r, s) => [makeTiger(x), makeGlider(x + lerp(85, 105, r()), lerp(102, 116, r()), lerp(14, 24, r()), s)] },
+        { name: 'pouncerPair', from: 2600, weight: 2, lateWeight: 2,    // two pouncers: stay down for both
+            build: (x, r, s) => { const start = s * lerp(0.22, 0.3, r());
+                return [makePouncer(x, lerp(140, 160, r()), start, s * 0.7), makePouncer(x + lerp(90, 110, r()), lerp(140, 160, r()), start, s * 0.7)]; } },
+        { name: 'riserOverTigers', from: 3000, weight: 2, lateWeight: 2, // full jump over two tigers before the hawk climbs into your path
+            build: (x, r, s) => [makeTiger(x), makeTiger(x + lerp(62, 70, r())), makeGlider(x + lerp(160, 190, r()), lerp(14, 22, r()), lerp(104, 116, r()), s)] }
     ];
 
     // Minimum ground distance between clusters: enough to land from any jump that cleared the
@@ -574,7 +625,10 @@
             prevEnd: CONFIG.PLAYER_X + 300,
             count: 0,
             lastBonus: -Infinity,   // metres where the last bonus stage started
-            bonusZones: []          // { x0, x1 } track spans of bonus stages, for the game to show
+            bonusZones: [],         // { x0, x1 } track spans of bonus stages, for the game to show
+            lastRush: -Infinity,    // metres where the last rush wave started
+            rushEnd: 0,             // track x where the current rush wave ends (0 = none)
+            rushZones: []           // { x0, x1 } track spans of rush waves, for the game to show
         };
     }
 
@@ -583,12 +637,16 @@
     }
 
     // Random enemy group, weighted by how far into the run we are.
-    function pickPattern(gen, meters, crowd) {
+    // How many enemies each pattern has (worked out once), so rush waves can skip singles.
+    const PATTERN_SIZE = new Map(PATTERNS.map((p) => [p, p.build(0, () => 0.5, 600).length]));
+
+    function pickPattern(gen, meters, crowd, multiOnly) {
+        const ok = (p) => meters >= p.from && (!multiOnly || PATTERN_SIZE.get(p) > 1);
         let total = 0;
-        for (const p of PATTERNS) if (meters >= p.from) total += patternWeight(p, crowd);
+        for (const p of PATTERNS) if (ok(p)) total += patternWeight(p, crowd);
         let r = gen.rng() * total;
         for (const p of PATTERNS) {
-            if (meters < p.from) continue;
+            if (!ok(p)) continue;
             r -= patternWeight(p, crowd);
             if (r <= 0) return p;
         }
@@ -610,8 +668,21 @@
         const crowd = crowdingFor(distance);
         const meters = distance / CONFIG.UNITS_PER_METER;
 
+        // Rush wave: starts here sometimes after RUSH.fromMeters; while it lasts, only
+        // multi-enemy groups, packed tight.
+        const RU = CONFIG.rush;
+        let rushEnding = false;
+        if (gen.rushEnd && x >= gen.rushEnd) { gen.rushEnd = 0; rushEnding = true; }
+        if (!gen.rushEnd && meters >= RU.fromMeters && meters - gen.lastRush >= RU.spacingMeters &&
+            meters - gen.lastBonus > 300 && r() < RU.chance) {
+            gen.rushEnd = x + s * RU.seconds;
+            gen.rushZones.push({ x0: x, x1: gen.rushEnd });
+            gen.lastRush = meters;
+        }
+        const inRush = gen.rushEnd > 0;
+
         const BO = CONFIG.bonus;
-        if (meters >= BO.fromMeters && meters - gen.lastBonus >= BO.spacingMeters && r() < BO.chance) {
+        if (!inRush && meters >= BO.fromMeters && meters - gen.lastBonus >= BO.spacingMeters && r() < BO.chance) {
             generateBonus(gen, out, s);
             return;
         }
@@ -619,7 +690,7 @@
         // Choose a pattern whose instance is verifiably clearable at this speed.
         let obstacles = null, win = null;
         for (let attempt = 0; attempt < 4 && !obstacles; attempt++) {
-            const pattern = attempt < 3 ? pickPattern(gen, meters, crowd) : PATTERNS[0];
+            const pattern = attempt < 3 ? pickPattern(gen, meters, crowd, inRush) : PATTERNS[0];
             const list = pattern.build(x, r, s);
             const w = bestWindow(hitboxes(list), s, { enough: CONFIG.fairness.minWindow, pressStep: 1 / 120 });
             if (w && w.seconds >= CONFIG.fairness.minWindow) { obstacles = list; win = w; }
@@ -643,7 +714,9 @@
         const SP = CONFIG.spawn;
         const slack = lerp(SP.slackStart, SP.slackEnd, crowd);
         let gap = minGap(s) + s * slack * r();
-        if (r() < lerp(SP.breatherStart, SP.breatherEnd, crowd)) gap += s * SP.breatherSeconds;
+        if (inRush) gap = minGap(s);                         // packed as tight as is fair
+        else if (r() < lerp(SP.breatherStart, SP.breatherEnd, crowd)) gap += s * SP.breatherSeconds;
+        if (rushEnding) gap += s * RU.breatherSeconds;       // catch your breath after a rush
         gen.prevObstacles = obstacles;
         gen.prevEnd = b.x1;
         gen.cursor = b.x1 + gap;
@@ -807,7 +880,7 @@
         createPlayer, pressJump, stepPlayer,
         makeBox, playerBox, overlaps,
         makeTiger, makeHawk, makeBanana, makeGoldenBanana, makeHopper, makePouncer, makeGlider,
-        obstacleOffset, obstacleBox,
+        obstacleOffset, obstacleShift, obstacleBox, makeCharger,
         createGenerator, generateSegment, generateUntil,
         bestWindow, simulateJump, hitboxes, minGap,
         PATTERNS, TRAJECTORIES, MAX_AIR, MIN_APEX, MAX_APEX,

@@ -76,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.9.0'` → `'3.9.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.11.0'` → `'3.11.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -109,6 +109,7 @@ the versions (step 4).
 | `price` | yes | Cost in banked bananas. `0` makes it free and owned from the start. |
 | `bestRun` | no | Metres the player must reach **in one run** before they can buy it. |
 | `totalRun` | no | Metres the player must run **across all runs** before they can buy it. |
+| `either` | no | `true` with both goals: reaching **either** one unlocks it (one long run *or* the total). So far the total is double the one-run distance, e.g. `bestRun: 2500, totalRun: 5000, either: true`. |
 | `image` | no | Path to the 256x256 sprite. Leave it out to use the default gorilla. |
 | `recolor` | no | `{ fur: '#hex', skin: '#hex' }` repaints the image. |
 | `scale` | no | Draws the skin bigger while keeping it on the ground, for example `1.25` for the Racer. |
@@ -121,7 +122,7 @@ runs come after every skin. The 12 skins that existed before this rule (up to Ro
 keep counting every past run, so nobody lost progress. On a locked card, "New run" means the
 player's record already beats the goal but they need to do it again.
 
-If a skin has both `bestRun` and `totalRun`, the player needs both. A locked skin shows a
+If a skin has both `bestRun` and `totalRun` without `either`, the player needs both. A locked skin shows a
 progress bar for the next goal it still needs.
 
 ## Good to know
@@ -155,16 +156,22 @@ All of these (prices, durations, keys, the 99 cap and the 60 m head-start window
 [`powerups.js`](powerups.js). A head start's distance counts toward the run, the Top 5 lists and
 skin goals. It skips that stretch's bananas.
 
-## Bonus stages and golden bananas
+## Bonus stages, rush waves and golden bananas
 
 - **Bonus stages:** after 800 m, an enemy group sometimes turns into a 10-second stretch with
   no enemies and lots of bananas, announced with a "BONUS!" banner and a golden glow. On
   average there's one every 1,000–1,500 m. A great time to use Magnet and Double.
+- **White tiger:** from 2,000 m. It waits, then sprints at you at nearly twice the running speed,
+  often right past the next enemy group. A ⚠️ marker at the right edge warns you while it's still
+  off screen. Jump earlier than you think.
+- **Rush waves:** after 2,500 m, sometimes about 8 seconds of back-to-back multi-enemy groups at
+  the closest fair spacing, announced with a red "RUSH!" banner, followed by a short breather.
+  About one every 1,250 m. Tune them in `CONFIG.rush`.
 - **Golden bananas (worth 5):** from 1,500 m, placed in risky spots near enemies. The fairness
   checker makes sure every one can be grabbed and survived, but only with a tight timing window
   (40–220 ms). Ignoring them is always the safe choice.
 
-Tune both in `CONFIG.bonus` and `CONFIG.golden` in [`engine.js`](engine.js).
+Tune them in `CONFIG.bonus`, `CONFIG.rush` and `CONFIG.golden` in [`engine.js`](engine.js).
 `node tools/density-report.js` shows how often they appear.
 
 ## Project layout
