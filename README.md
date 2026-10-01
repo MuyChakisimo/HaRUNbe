@@ -167,7 +167,7 @@ skin goals. It skips that stretch's bananas.
   often right past the next enemy group. A ⚠️ marker at the right edge warns you while it's still
   off screen. Jump earlier than you think.
 - **Rush waves:** after 2,000 m, about 10 seconds of back-to-back multi-enemy groups packed
-  tighter than normal (still checked by the fairness test), announced with a red "RUSH!" banner, followed by a short breather.
+  tighter than normal (still checked by the fairness test), announced with a red "MOB RUSH" banner, followed by a short breather.
   About one every 800 m. Tune them in `CONFIG.rush`.
 - **Golden bananas (worth 5):** from 1,500 m, placed in risky spots near enemies. The fairness
   checker makes sure every one can be grabbed and survived, but only with a tight timing window

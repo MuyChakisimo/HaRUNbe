@@ -1605,7 +1605,7 @@
             ctx.drawImage(rushVignette, 0, view.top, view.w, view.h);
             ctx.globalAlpha = 1;
         }
-        drawBanner(b, b.into < 0 ? 'RUSH INCOMING!' : '⚠️ RUSH! ⚠️', '#ff4a3a', '#3a0000', '#ff4a3a');
+        drawBanner(b, b.into < 0 ? 'MOB RUSH INCOMING!' : '⚠️ MOB RUSH ⚠️', '#ff4a3a', '#3a0000', '#ff4a3a');
     }
     let rushVignette = null; // cached small canvas; cleared on resize
 
@@ -1636,7 +1636,7 @@
 
     // "BONUS!" banner at the top with a bar showing how much of the stage is left.
     function drawBonusBanner(b) {
-        drawBanner(b, b.into < 0 ? 'BONUS STAGE!' : '🍌 BONUS! 🍌', '#ffe135', '#5a3500', '#ffe135');
+        drawBanner(b, b.into < 0 ? 'BONUS STAGE!' : '🍌 BONUS 🍌', '#ffe135', '#5a3500', '#ffe135');
     }
 
     // Pulsing title at the top of the screen, plus a timer bar once the stage has started.
@@ -1665,9 +1665,9 @@
     // takes a few milliseconds and would show up as a hitch).
     function prewarm() {
         bannerImage('BONUS STAGE!', '#ffe135', '#5a3500');
-        bannerImage('🍌 BONUS! 🍌', '#ffe135', '#5a3500');
-        bannerImage('RUSH INCOMING!', '#ff4a3a', '#3a0000');
-        bannerImage('⚠️ RUSH! ⚠️', '#ff4a3a', '#3a0000');
+        bannerImage('🍌 BONUS 🍌', '#ffe135', '#5a3500');
+        bannerImage('MOB RUSH INCOMING!', '#ff4a3a', '#3a0000');
+        bannerImage('⚠️ MOB RUSH ⚠️', '#ff4a3a', '#3a0000');
         rushVignette = buildRushVignette();
         whiteTigerSprite(); glideHawkSprite(); pounceTigerSprite();
         bananaGlowSprite(); goldenBananaSprite();

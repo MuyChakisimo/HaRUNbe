@@ -38,7 +38,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.13.1',
+        VERSION: '3.13.2',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
