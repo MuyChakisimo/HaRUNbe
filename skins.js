@@ -50,6 +50,8 @@
             image: 'Assets/Player/256x256NinjaGorilla.png' },
         { id: 'strawhat', name: 'Straw Hat', price: 1300, totalRun: 6400,
             image: 'Assets/Player/256x256StrawHatGorilla.png' },
+        { id: 'bananasuit', name: 'Banana Suit', price: 1200, totalRun: 6000,
+            image: 'Assets/Player/256x256BananaSuitGorilla.png' },
         { id: 'golden', name: 'Golden', price: 1500, bestRun: 3500,
             recolor: { fur: '#c8921a', skin: '#fff0a0' } },
         { id: 'racer', name: 'Racer', price: 1000, bestRun: 2700, totalRun: 5400, either: true,
@@ -57,7 +59,9 @@
         { id: 'samurai', name: 'Samurai', price: 2000, bestRun: 4200, totalRun: 8400, either: true,
             image: 'Assets/Player/256x256SamuraiGorilla.png' },
         { id: 'robopirate', name: 'Robo Pirate', price: 2500, bestRun: 5000,
-            image: 'Assets/Player/256x256RoboPirateGorilla.png' }
+            image: 'Assets/Player/256x256RoboPirateGorilla.png' },
+        { id: 'kaiju', name: 'Kaiju', price: 3000, bestRun: 6000, totalRun: 12000, either: true,
+            image: 'Assets/Player/256x256KaijuGorilla.png' }
     ];
 
     for (const skin of SKINS) if (!skin.image) skin.image = DEFAULT_IMAGE;
