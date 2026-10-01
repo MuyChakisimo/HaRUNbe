@@ -38,7 +38,7 @@
     'use strict';
 
     const CONFIG = {
-        VERSION: '3.11.1',
+        VERSION: '3.12.0',
 
         WORLD_H: 540,          // height of the gameplay band that is always visible
         MIN_VIEW_W: 760,       // narrowest world width shown (portrait letterboxes vertically)
@@ -88,12 +88,12 @@
             pressStep: 1 / 240      // resolution of the timing search
         },
 
-        // Bonus stages: a stretch with no enemies and lots of bananas. After `fromMeters`, each
-        // enemy group has a `chance` of being replaced by one (at least `spacingMeters` apart).
+        // Bonus stages: a stretch with no enemies and lots of bananas.
+        // Every `everyMeters` (from `fromMeters` on) there is a `chance` of a bonus stage.
         bonus: {
             fromMeters: 800,
-            spacingMeters: 700,
-            chance: 0.04,       // per enemy group; about one bonus every 1,000-1,500 m
+            everyMeters: 500,
+            chance: 0.2,        // 20% per 500 m: about one bonus every 2,500 m
             seconds: 10,        // how long the banana stretch lasts
             leadOut: 0.8        // extra clear seconds after it, before enemies return
         },
@@ -103,11 +103,12 @@
         // Rush waves: the opposite of a bonus stage. For `seconds`, only multi-enemy groups
         // come, at the closest fair spacing; then a short breather.
         rush: {
-            fromMeters: 2500,
-            spacingMeters: 900,
-            chance: 0.05,       // per enemy group
-            seconds: 8,
-            breatherSeconds: 1.2
+            fromMeters: 2000,
+            spacingMeters: 600,
+            chance: 0.12,       // per enemy group
+            seconds: 10,
+            breatherSeconds: 1.5,
+            reaction: 0.13      // seconds on the ground between groups during a rush (normal: fairness.reaction)
         },
 
         golden: {
@@ -592,11 +593,11 @@
             build: (x, r, s) => [makeTiger(x), makePouncer(x + lerp(200, 240, r()), lerp(135, 160, r()), s * lerp(0.22, 0.32, r()), s * 0.7)] },
 
         // White tiger (2,000 m+): waits, then sprints at you, often right past the next group.
-        { name: 'whiteTiger', from: 2000, weight: 2, lateWeight: 3,
+        { name: 'whiteTiger', from: 1500, weight: 4, lateWeight: 5,
             build: (x, r, s) => [makeCharger(x, s * lerp(1.0, 1.6, r()), lerp(0.7, 0.9, r()))] },
 
         // Late game (2,000 m+): the moving enemies combined, so long runs keep changing.
-        { name: 'hopperPair', from: 2000, weight: 3, lateWeight: 3,     // two bouncing tigers, out of step
+        { name: 'hopperPair', from: 2000, weight: 3, lateWeight: 3, noRush: true, // two bouncing tigers, out of step (needs room: not in rushes)
             build: (x, r, s) => [makeHopper(x, lerp(40, 60, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI),
                 makeHopper(x + lerp(66, 80, r()), lerp(40, 60, r()), s * lerp(0.6, 0.8, r()), r() * Math.PI)] },
         { name: 'tigerThenDiver', from: 2200, weight: 3, lateWeight: 3, // hop the tiger as a hawk swoops in behind it
@@ -614,6 +615,12 @@
         return s * (MAX_AIR + CONFIG.fairness.reaction) + 40;
     }
 
+    // Tighter spacing used only inside rush waves (multi-enemy groups only). Also verified by
+    // tools/fairness-test.js.
+    function rushGap(s) {
+        return s * (MAX_AIR + CONFIG.rush.reaction) + 20;
+    }
+
     // ---------------------------------------------------------------- world generator
 
     function createGenerator(rng) {
@@ -625,6 +632,7 @@
             prevEnd: CONFIG.PLAYER_X + 300,
             count: 0,
             lastBonus: -Infinity,   // metres where the last bonus stage started
+            nextBonusRoll: CONFIG.bonus.fromMeters, // metres of the next bonus-stage dice roll
             bonusZones: [],         // { x0, x1 } track spans of bonus stages, for the game to show
             lastRush: -Infinity,    // metres where the last rush wave started
             rushEnd: 0,             // track x where the current rush wave ends (0 = none)
@@ -641,7 +649,7 @@
     const PATTERN_SIZE = new Map(PATTERNS.map((p) => [p, p.build(0, () => 0.5, 600).length]));
 
     function pickPattern(gen, meters, crowd, multiOnly) {
-        const ok = (p) => meters >= p.from && (!multiOnly || PATTERN_SIZE.get(p) > 1);
+        const ok = (p) => meters >= p.from && (!multiOnly || (PATTERN_SIZE.get(p) > 1 && !p.noRush));
         let total = 0;
         for (const p of PATTERNS) if (ok(p)) total += patternWeight(p, crowd);
         let r = gen.rng() * total;
@@ -682,9 +690,9 @@
         const inRush = gen.rushEnd > 0;
 
         const BO = CONFIG.bonus;
-        if (!inRush && meters >= BO.fromMeters && meters - gen.lastBonus >= BO.spacingMeters && r() < BO.chance) {
-            generateBonus(gen, out, s);
-            return;
+        if (!inRush && meters >= gen.nextBonusRoll) {
+            while (gen.nextBonusRoll <= meters) gen.nextBonusRoll += BO.everyMeters;
+            if (r() < BO.chance) { generateBonus(gen, out, s); return; }
         }
 
         // Choose a pattern whose instance is verifiably clearable at this speed.
@@ -714,7 +722,7 @@
         const SP = CONFIG.spawn;
         const slack = lerp(SP.slackStart, SP.slackEnd, crowd);
         let gap = minGap(s) + s * slack * r();
-        if (inRush) gap = minGap(s);                         // packed as tight as is fair
+        if (inRush) gap = rushGap(s);                        // packed as tight as is fair
         else if (r() < lerp(SP.breatherStart, SP.breatherEnd, crowd)) gap += s * SP.breatherSeconds;
         if (rushEnding) gap += s * RU.breatherSeconds;       // catch your breath after a rush
         gen.prevObstacles = obstacles;
@@ -882,7 +890,7 @@
         makeTiger, makeHawk, makeBanana, makeGoldenBanana, makeHopper, makePouncer, makeGlider,
         obstacleOffset, obstacleShift, obstacleBox, makeCharger,
         createGenerator, generateSegment, generateUntil,
-        bestWindow, simulateJump, hitboxes, minGap,
+        bestWindow, simulateJump, hitboxes, minGap, rushGap, isMultiPattern: (p) => PATTERN_SIZE.get(p) > 1 && !p.noRush,
         PATTERNS, TRAJECTORIES, MAX_AIR, MIN_APEX, MAX_APEX,
         PLAYER_HITBOX: { PHX0, PHX1, PH_TOP, PH_BOTTOM }
     };

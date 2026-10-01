@@ -62,19 +62,20 @@ function solutions(boxes, s) {
     return out;
 }
 
-console.log('\n2) Consecutive clusters at the minimum gap: however cluster A was cleared, B is still fair:');
+console.log('\n2) Consecutive clusters at the minimum gap (and at the tighter rush-wave gap):');
 let pairChecks = 0;
-for (const s of speeds) {
+for (const mode of ['normal', 'rush']) for (const s of speeds) {
     const meters = metersForSpeed(s) + 400;
-    const avail = PATTERNS.filter(p => meters >= p.from);
+    if (mode === 'rush' && meters < CONFIG.rush.fromMeters) continue;
+    const avail = PATTERNS.filter(p => meters >= p.from && (mode === 'normal' || E.isMultiPattern(p)));
     for (const A of avail) for (const B of avail) {
         const a = A.build(0, rng, s);
         const boxesA = E.hitboxes(a);
         const aEnd = Math.max(...boxesA.map(b => b.x1));
-        const bStart = aEnd + E.minGap(s);
+        const bStart = aEnd + (mode === 'rush' ? E.rushGap(s) : E.minGap(s));
         const b = B.build(bStart, rng, s);
         const shift = bStart - Math.min(...E.hitboxes(b).map(h => h.x0));
-        const boxesB = E.hitboxes(b).map(h => Object.assign({}, h, { x0: h.x0 + shift, x1: h.x1 + shift })) // keeps any motion;
+        const boxesB = E.hitboxes(b).map(h => Object.assign({}, h, { x0: h.x0 + shift, x1: h.x1 + shift }, h.sx0 === undefined ? {} : { sx0: h.sx0 + shift })) // keeps any motion;
         const solsA = E.bestWindow(boxesA, s).traj === null ? [{ land: -Infinity }] : solutions(boxesA, s);
         // Latest landing from any way of clearing A:
         let worstLand = -Infinity;
@@ -85,7 +86,7 @@ for (const s of speeds) {
         const bw = bestWindowAfter(boxesB, s, worstLand + s * 0.2);
         pairChecks++;
         if (!bw || bw < CONFIG.fairness.minWindow) {
-            fail(`${A.name} -> ${B.name} at ${s}: window after worst landing ${(bw * 1000 || 0).toFixed(0)} ms`);
+            fail(`[${mode}] ${A.name} -> ${B.name} at ${s}: window after worst landing ${(bw * 1000 || 0).toFixed(0)} ms`);
         }
         void pre;
     }

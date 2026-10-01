@@ -13,7 +13,7 @@
  *               'shield'  blocks the next hit, for the rest of the run
  *               'magnet'  pulls in nearby bananas for `seconds`
  *               'double'  bananas count twice for `seconds`
- *               'warp'    head start: jumps `meters` ahead. Only usable in the first few
+ *               'warp'    head start: jumps `miles` ahead. Only usable in the first few
  *                         seconds of a run, and only one head start per run.
  */
 (function (root) {
@@ -26,13 +26,16 @@
             info: 'Pulls in bananas, 15 s' },
         { id: 'double', name: 'Double', icon: '×2', price: 80, key: '3', effect: 'double', seconds: 20,
             info: '2× bananas, 20 s' },
-        { id: 'warp600', name: 'Head start', icon: '⚡', price: 150, key: '4', effect: 'warp', meters: 600,
-            info: 'Skip ahead 600 m' },
-        { id: 'warp800', name: 'Head start', icon: '⚡', price: 250, key: '5', effect: 'warp', meters: 800,
-            info: 'Skip ahead 800 m' },
-        { id: 'warp1000', name: 'Head start', icon: '⚡', price: 400, key: '6', effect: 'warp', meters: 1000,
-            info: 'Skip ahead 1,000 m' }
+        { id: 'warp600', name: 'Head start', icon: '⚡', price: 150, key: '4', effect: 'warp', miles: 0.4,
+            info: 'Skip ahead 0.4 mi' },
+        { id: 'warp800', name: 'Head start', icon: '⚡', price: 250, key: '5', effect: 'warp', miles: 0.5,
+            info: 'Skip ahead 0.5 mi' },
+        { id: 'warp1000', name: 'Head start', icon: '⚡', price: 400, key: '6', effect: 'warp', miles: 0.6,
+            info: 'Skip ahead 0.6 mi' }
     ];
+
+    // The game counts distance in metres internally.
+    for (const p of POWERUPS) if (p.miles) p.meters = Math.round(p.miles * 1609.344);
 
     root.HarunbePowerups = {
         list: POWERUPS,

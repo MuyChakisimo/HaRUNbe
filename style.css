@@ -755,6 +755,8 @@ h3 {
 
 .skin-card.locked .skin-name { color: var(--muted); }
 
+.skin-status.skin-status-small { font-size: 0.68rem; letter-spacing: -0.2px; } /* either/or goals: longer text */
+
 .skin-status {
     font-size: 0.78rem;
     color: var(--muted);

@@ -76,7 +76,7 @@ Add a line to the `SKINS` list:
 Skins appear in the Shop's Skins tab in the same order as the list.
 
 **4. Bump the version.**
-Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.11.0'` → `'3.11.1'`). Players then download
+Raise `VERSION` in [`sw.js`](sw.js) (for example `'3.12.0'` → `'3.12.1'`). Players then download
 the new image and keep it for offline play. Also raise `VERSION` in [`engine.js`](engine.js),
 which is the version number shown on the menu.
 
@@ -107,9 +107,9 @@ the versions (step 4).
 | `id` | yes | Unique internal name. Players' saves store it, so **never change it** after the skin has been released. |
 | `name` | yes | Name shown in the Shop. |
 | `price` | yes | Cost in banked bananas. `0` makes it free and owned from the start. |
-| `bestRun` | no | Metres the player must reach **in one run** before they can buy it. |
-| `totalRun` | no | Metres the player must run **across all runs** before they can buy it. |
-| `either` | no | `true` with both goals: reaching **either** one unlocks it (one long run *or* the total). So far the total is double the one-run distance, e.g. `bestRun: 2500, totalRun: 5000, either: true`. |
+| `bestRun` | no | **Miles** the player must reach **in one run** before they can buy it, e.g. `1.5`. |
+| `totalRun` | no | **Miles** the player must run **across all runs** before they can buy it. |
+| `either` | no | `true` with both goals: reaching **either** one unlocks it (one long run *or* the total). So far the total is double the one-run distance, e.g. `bestRun: 1.5, totalRun: 3, either: true`. |
 | `image` | no | Path to the 256x256 sprite. Leave it out to use the default gorilla. |
 | `recolor` | no | `{ fur: '#hex', skin: '#hex' }` repaints the image. |
 | `scale` | no | Draws the skin bigger while keeping it on the ground, for example `1.25` for the Racer. |
@@ -117,7 +117,7 @@ the versions (step 4).
 **New skins start from zero.** When you add a skin, players who already have a save only
 count runs made *after* the skin arrives. For example, a new skin with `bestRun: 1500` needs a
 fresh 1,500 m run, even if the player's record is 4,000 m. The same goes for `totalRun`: only
-metres run since the skin arrived count. Brand-new players are unaffected, because all their
+distance run since the skin arrived count. Brand-new players are unaffected, because all their
 runs come after every skin. The 12 skins that existed before this rule (up to Robo Pirate)
 keep counting every past run, so nobody lost progress. On a locked card, "New run" means the
 player's record already beats the goal but they need to do it again.
@@ -129,10 +129,12 @@ progress bar for the next goal it still needs.
 
 - **Skins are only cosmetic.** Every skin uses the gorilla's hitbox, so a bigger or smaller
   character is never easier or harder to play.
-- **Balancing prices:** a run earns roughly 1 banana for every 8–10 metres. A 500 m run
-  banks about 50–60 bananas.
-- **Skin distance goals are all above 1,000 m.** The biggest head start power-up puts you at
-  1,000 m, so a head start alone never unlocks a skin. Keep new goals above that too.
+- **Balancing prices:** a run earns roughly 1 banana for every 8–10 metres, so a 1-mile run
+  banks about 160–200 bananas.
+- **Skin distance goals are all above 0.6 mi.** The biggest head start power-up puts you at
+  0.6 mi, so a head start alone never unlocks a skin. Keep new goals above that too.
+- **Miles everywhere:** the game shows every distance in miles. Inside the code it still counts
+  metres (1 mile = 1,609 m), so `CONFIG` values in engine.js are in metres.
 - **Where progress is saved:** banked bananas, lifetime distance, owned skins and stored
   power-ups are kept in the browser (`localStorage`, key `harunbe.progress.v1`). Records are
   stored separately, under `harunbe.records.v2`.
@@ -150,7 +152,7 @@ one. Each power-up can be used once per run, and any you don't press stay in sto
 | 🛡️ Shield | 1 | Blocks the next hit, for the rest of the run | 🍌 150 |
 | 🧲 Magnet | 2 | Pulls in nearby bananas for 15 s | 🍌 60 |
 | ×2 Double | 3 | Bananas count double for 20 s | 🍌 80 |
-| ⚡ Head start 600 / 800 / 1,000 m | 4 / 5 / 6 | Skips ahead. Only in the first 60 m, one per run | 🍌 150 / 250 / 400 |
+| ⚡ Head start 0.4 / 0.5 / 0.6 mi | 4 / 5 / 6 | Skips ahead. Only in the first 60 m, one per run | 🍌 150 / 250 / 400 |
 
 All of these (prices, durations, keys, the 99 cap and the 60 m head-start window) are in
 [`powerups.js`](powerups.js). A head start's distance counts toward the run, the Top 5 lists and
@@ -158,15 +160,15 @@ skin goals. It skips that stretch's bananas.
 
 ## Bonus stages, rush waves and golden bananas
 
-- **Bonus stages:** after 800 m, an enemy group sometimes turns into a 10-second stretch with
+- **Bonus stages:** after 800 m, every 500 m there's a 20% chance of a 10-second stretch with
   no enemies and lots of bananas, announced with a "BONUS!" banner and a golden glow. On
-  average there's one every 1,000–1,500 m. A great time to use Magnet and Double.
-- **White tiger:** from 2,000 m. It waits, then sprints at you at nearly twice the running speed,
+  average there's one every 2,500 m (about 1.5 mi). A great time to use Magnet and Double.
+- **White tiger:** from 1,500 m (about 0.9 mi), and common. It waits, then sprints at you at nearly twice the running speed,
   often right past the next enemy group. A ⚠️ marker at the right edge warns you while it's still
   off screen. Jump earlier than you think.
-- **Rush waves:** after 2,500 m, sometimes about 8 seconds of back-to-back multi-enemy groups at
-  the closest fair spacing, announced with a red "RUSH!" banner, followed by a short breather.
-  About one every 1,250 m. Tune them in `CONFIG.rush`.
+- **Rush waves:** after 2,000 m, about 10 seconds of back-to-back multi-enemy groups packed
+  tighter than normal (still checked by the fairness test), announced with a red "RUSH!" banner, followed by a short breather.
+  About one every 800 m. Tune them in `CONFIG.rush`.
 - **Golden bananas (worth 5):** from 1,500 m, placed in risky spots near enemies. The fairness
   checker makes sure every one can be grabbed and survived, but only with a tight timing window
   (40–220 ms). Ignoring them is always the safe choice.

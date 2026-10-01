@@ -1068,13 +1068,13 @@
             const btn = document.createElement('button');
             btn.className = 'power-btn' + (inUse ? ' active' : '') + (p.effect === 'warp' ? ' warp' : '');
             btn.dataset.id = p.id;
-            btn.setAttribute('aria-label', p.name + (p.meters ? ' ' + p.meters + ' m' : '') + ' (key ' + p.key + ')');
+            btn.setAttribute('aria-label', p.name + (p.miles ? ' ' + p.miles + ' mi' : '') + ' (key ' + p.key + ')');
             const icon = document.createElement('span');
             icon.className = 'pw-icon';
             icon.textContent = p.icon;
             const label = document.createElement('span');
             label.className = 'pw-label';
-            label.textContent = p.meters ? numberFormat.format(p.meters) + ' m' : p.name;
+            label.textContent = p.miles ? p.miles + ' mi' : p.name;
             const key = document.createElement('span');
             key.className = 'pw-key';
             key.textContent = p.key;
@@ -1784,6 +1784,11 @@
     // =====================================================================
 
     const numberFormat = new Intl.NumberFormat();
+
+    // Distances are counted in metres internally but always shown in miles (2 decimals).
+    const METERS_PER_MILE = 1609.344;
+    const milesFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    function miles(m) { return milesFormat.format(m / METERS_PER_MILE) + ' mi'; }
     const hud = { last: { bananas: -1, meters: -1 } };
 
     // Banana and distance counters; the DOM is only touched when a number changes.
@@ -1794,7 +1799,11 @@
             ? Math.round(lerp(meters(), pw.warpFrom, (pw.warpFx / WARP_FX) ** 2))
             : meters();
         updatePowerBar();
-        if (m !== hud.last.meters) { hud.last.meters = m; dom.hudDistance.textContent = numberFormat.format(m) + ' m'; }
+        if (m !== hud.last.meters) {
+            hud.last.meters = m;
+            const text = miles(m);
+            if (dom.hudDistance.textContent !== text) dom.hudDistance.textContent = text;
+        }
         if (run.bananas !== hud.last.bananas) { hud.last.bananas = run.bananas; dom.hudBananas.textContent = numberFormat.format(run.bananas); }
     }
 
@@ -1925,9 +1934,9 @@
         needsRender = true;
         const r = run.result;
         const rec = Records.data;
-        dom.resDistance.textContent = numberFormat.format(r.distance) + ' m';
+        dom.resDistance.textContent = miles(r.distance);
         dom.resBananas.textContent = numberFormat.format(r.bananas);
-        dom.resBestDistance.textContent = numberFormat.format(rec.bestDistance) + ' m';
+        dom.resBestDistance.textContent = miles(rec.bestDistance);
         dom.resMostBananas.textContent = numberFormat.format(rec.mostBananas);
         setOverlay(dom.resDistanceBadge, r.newDistance);
         setOverlay(dom.resBananasBadge, r.newBananas);
@@ -1964,7 +1973,7 @@
     function refreshMenu() {
         const rec = Records.data;
         dom.menuBest.textContent = rec.bestDistance || rec.mostBananas
-            ? 'Best ' + numberFormat.format(rec.bestDistance) + ' m  ·  🍌 ' + numberFormat.format(rec.mostBananas)
+            ? 'Best ' + miles(rec.bestDistance) + '  ·  🍌 ' + numberFormat.format(rec.mostBananas)
             : '';
         dom.skinsBtnWallet.textContent = numberFormat.format(Progress.data.bananas);
     }
@@ -1975,7 +1984,9 @@
 
     let skinsPage = 0;
     let shopTab = 'skins'; // 'skins' | 'powerups'
-    const compactFormat = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 });
+    // Goal distances on Shop cards: short miles, no trailing zeros (0.75 mi, 1.5 mi, 3 mi).
+    const goalFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+    const goalMi = (m) => goalFormat.format(m / METERS_PER_MILE);
     // Narrowest comfortable card and tallest a card may grow, in CSS pixels. The shortest card
     // is measured from a real card, so it always matches the current fonts and screen size.
     const CARD_MIN_W = 190, CARD_MAX_H = 140;
@@ -2008,7 +2019,7 @@
         info.className = 'skin-info';
         const name = document.createElement('div');
         name.className = 'skin-name';
-        name.textContent = p.meters ? numberFormat.format(p.meters) + ' m start' : p.name;
+        name.textContent = p.miles ? p.miles + ' mi start' : p.name;
         const desc = document.createElement('div');
         desc.className = 'skin-status';
         desc.textContent = p.info;
@@ -2037,21 +2048,22 @@
             if (Progress.requirementsMet(skin)) return null;
             // Either goal unlocks it: show both, and fill the bar with whichever is closer.
             return {
-                text: '🔒 ' + compactFormat.format(skin.bestRun) + ' run or ' + compactFormat.format(skin.totalRun) + ' total',
+                text: '🔒 ' + goalMi(skin.bestRun) + ' run/' + goalMi(skin.totalRun) + ' total',
+                small: true,
                 frac: Math.max(p.best / skin.bestRun, p.total / skin.totalRun),
-                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run (best: ' + numberFormat.format(p.best) +
-                    ' m), or ' + numberFormat.format(skin.totalRun) + ' m in total (so far: ' + numberFormat.format(p.total) + ' m)' + since
+                full: 'Run ' + goalMi(skin.bestRun) + ' mi in one run (best: ' + miles(p.best) +
+                    '), or ' + goalMi(skin.totalRun) + ' mi in total (so far: ' + miles(p.total) + ')' + since
             };
         }
         if (skin.bestRun && p.best < skin.bestRun) {
             // "New run" when the player's all-time record already beats the goal.
             const label = p.fresh && Records.data.bestDistance >= skin.bestRun ? 'New run' : '1 run';
             return { label, have: p.best, need: skin.bestRun,
-                full: 'Run ' + numberFormat.format(skin.bestRun) + ' m in one run' + since };
+                full: 'Run ' + goalMi(skin.bestRun) + ' mi in one run' + since };
         }
         if (skin.totalRun && p.total < skin.totalRun) {
             return { label: 'Total', have: p.total, need: skin.totalRun,
-                full: 'Run ' + numberFormat.format(skin.totalRun) + ' m in total' + since };
+                full: 'Run ' + goalMi(skin.totalRun) + ' mi in total' + since };
         }
         return null;
     }
@@ -2099,8 +2111,10 @@
             btn.disabled = !!goal || bank < skin.price;
             if (!btn.disabled) btn.classList.add('btn-primary');
             if (goal) {
-                status.textContent = goal.text || ('🔒 ' + goal.label + ': ' + compactFormat.format(goal.have) +
-                    '/' + compactFormat.format(goal.need) + ' m');
+                // Short form to fit the card (always miles); the card's tooltip has the full sentence.
+                if (goal.small) status.classList.add('skin-status-small');
+                status.textContent = goal.text || ('🔒 ' + goalMi(goal.have) + '/' + goalMi(goal.need) + ' ' +
+                    (goal.label === 'Total' ? 'total' : goal.label === 'New run' ? 'new run' : 'run'));
                 card.title = goal.full;
                 const bar = document.createElement('div');
                 bar.className = 'skin-bar';
@@ -2206,9 +2220,9 @@
     // Fill in and show the Records screen.
     function showRecords() {
         const rec = Records.data;
-        dom.recBestDistance.textContent = numberFormat.format(rec.bestDistance) + ' m';
+        dom.recBestDistance.textContent = miles(rec.bestDistance);
         dom.recMostBananas.textContent = numberFormat.format(rec.mostBananas);
-        fillBoard(dom.recDistanceList, rec.distanceBoard, (v) => numberFormat.format(v) + ' m');
+        fillBoard(dom.recDistanceList, rec.distanceBoard, miles);
         fillBoard(dom.recBananaList, rec.bananaBoard, (v) => '🍌 ' + numberFormat.format(v));
         showScreen('records');
     }
